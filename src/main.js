@@ -228,7 +228,7 @@ function renderHub() {
           const d = `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`;
           return `<path class="hub-ray" data-hub-ray="${index}" d="${d}"/>`;
         }).join('')}
-        ${flows.map(({ index, d }) => `<path class="hub-sequence-line" data-flow-line="${index}" d="${d}"/><path class="hub-sequence-wave" data-flow-wave="${index}" pathLength="1" d="${d}"/>`).join('')}
+        ${flows.map(({ index, d }) => `<path class="hub-flow-wake wake-back" data-flow-wave="${index}" pathLength="1" d="${d}"/><path class="hub-flow-wake wake-mid" data-flow-wave="${index}" pathLength="1" d="${d}"/><path class="hub-flow-fin" data-flow-wave="${index}" pathLength="1" d="${d}"/>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
       ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
@@ -247,21 +247,24 @@ function startHubMotion() {
 
   const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
   const rays = [...orbit.querySelectorAll('[data-hub-ray]')];
-  const flowLines = [...orbit.querySelectorAll('[data-flow-line]')];
   const flowWaves = [...orbit.querySelectorAll('[data-flow-wave]')];
   if (!stages.length) return;
 
   let activeIndex = 0;
   const selectNext = () => {
     const targetIndex = (activeIndex + 1) % stages.length;
+
     stages.forEach((button, index) => {
       button.classList.toggle('auto-hover', index === activeIndex);
       button.classList.toggle('flow-target', index === targetIndex);
     });
-    rays.forEach((ray, index) => ray.classList.toggle('auto-active', index === activeIndex || index === targetIndex));
-    flowLines.forEach((line, index) => line.classList.toggle('auto-active', index === activeIndex));
-    flowWaves.forEach((wave, index) => {
-      const active = index === activeIndex;
+
+    rays.forEach((ray, index) => {
+      ray.classList.toggle('auto-active', index === activeIndex || index === targetIndex);
+    });
+
+    flowWaves.forEach(wave => {
+      const active = Number(wave.dataset.flowWave) === activeIndex;
       wave.classList.remove('auto-active');
       if (active) requestAnimationFrame(() => wave.classList.add('auto-active'));
     });
@@ -275,7 +278,7 @@ function startHubMotion() {
     }
     activeIndex = (activeIndex + 1) % stages.length;
     selectNext();
-  }, 1900);
+  }, 2050);
 }
 
 function renderBoard() {
