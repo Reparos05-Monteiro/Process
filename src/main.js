@@ -30,6 +30,7 @@ let authSubscription;
 let loginInProgress = false;
 let composingSearch = false;
 let hubMotionTimer = 0;
+let hubMotionRun = 0;
 
 const admin = () => state.member?.role === 'admin';
 const stage = id => state.stages.find(item => item.id === id);
@@ -228,7 +229,7 @@ function renderHub() {
           const d = `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`;
           return `<path class="hub-ray" data-hub-ray="${index}" d="${d}"/>`;
         }).join('')}
-        ${flows.map(({ index, d }) => `<path class="hub-flow-wake wake-back" data-flow-wave="${index}" pathLength="1" d="${d}"/><path class="hub-flow-wake wake-mid" data-flow-wave="${index}" pathLength="1" d="${d}"/><path class="hub-flow-fin" data-flow-wave="${index}" pathLength="1" d="${d}"/>`).join('')}
+        ${flows.map(({ index, d }) => `<path id="hub-flow-path-${index}" class="hub-flow-motion-path" d="${d}"/><g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-wake-crest wake-wide" d="M-34 -12 Q-18 0 -34 12"/><path class="hub-wake-crest wake-mid" d="M-24 -8 Q-12 0 -24 8"/><path class="hub-wake-crest wake-near" d="M-15 -5 Q-7 0 -15 5"/><path class="hub-wake-fin" d="M-5 0 Q0 -4 6 0 Q0 4 -5 0Z"/><animateMotion data-flow-motion="${index}" dur="3.4s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
       ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
@@ -236,49 +237,86 @@ function renderHub() {
 }
 
 function stopHubMotion() {
-  if (hubMotionTimer) clearInterval(hubMotionTimer);
+  if (hubMotionTimer) clearTimeout(hubMotionTimer);
   hubMotionTimer = 0;
+  hubMotionRun += 1;
 }
 
 function startHubMotion() {
   stopHubMotion();
+  const runId = hubMotionRun;
   const orbit = document.querySelector('.hub-orbit');
   if (!orbit || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
   const rays = [...orbit.querySelectorAll('[data-hub-ray]')];
-  const flowWaves = [...orbit.querySelectorAll('[data-flow-wave]')];
-  if (!stages.length) return;
+  const wakes = [...orbit.querySelectorAll('[data-flow-wake]')];
+  const motions = [...orbit.querySelectorAll('[data-flow-motion]')];
+  if (!stages.length || wakes.length !== stages.length || motions.length !== stages.length) return;
 
-  let activeIndex = 0;
-  const selectNext = () => {
-    const targetIndex = (activeIndex + 1) % stages.length;
+  const travelMs = 3400;
+  const dwellMs = 1550;
 
-    stages.forEach((button, index) => {
-      button.classList.toggle('auto-hover', index === activeIndex);
-      button.classList.toggle('flow-target', index === targetIndex);
+  const setActiveStage = index => {
+    stages.forEach((button, itemIndex) => {
+      button.classList.toggle('auto-hover', itemIndex === index);
+      button.classList.remove('flow-target', 'flow-arrived');
     });
-
-    rays.forEach((ray, index) => {
-      ray.classList.toggle('auto-active', index === activeIndex || index === targetIndex);
-    });
-
-    flowWaves.forEach(wave => {
-      const active = Number(wave.dataset.flowWave) === activeIndex;
-      wave.classList.remove('auto-active');
-      if (active) requestAnimationFrame(() => wave.classList.add('auto-active'));
+    rays.forEach((ray, itemIndex) => {
+      ray.classList.toggle('auto-active', itemIndex === index);
     });
   };
 
-  selectNext();
-  hubMotionTimer = setInterval(() => {
-    if (!document.body.contains(orbit)) {
-      stopHubMotion();
-      return;
+  const arrive = (sourceIndex, targetIndex, wake, finish) => {
+    if (finish.done || runId !== hubMotionRun || !document.body.contains(orbit)) return;
+    finish.done = true;
+    if (hubMotionTimer) clearTimeout(hubMotionTimer);
+    hubMotionTimer = 0;
+    wake.classList.remove('running');
+
+    stages.forEach((button, itemIndex) => {
+      button.classList.toggle('auto-hover', itemIndex === targetIndex);
+      button.classList.toggle('flow-target', itemIndex === targetIndex);
+      button.classList.remove('flow-arrived');
+    });
+    rays.forEach((ray, itemIndex) => {
+      ray.classList.toggle('auto-active', itemIndex === targetIndex);
+    });
+
+    const target = stages[targetIndex];
+    void target.offsetWidth;
+    target.classList.add('flow-arrived');
+
+    hubMotionTimer = setTimeout(() => {
+      if (runId !== hubMotionRun || !document.body.contains(orbit)) return;
+      target.classList.remove('flow-arrived', 'flow-target');
+      launch(targetIndex);
+    }, dwellMs);
+  };
+
+  const launch = sourceIndex => {
+    if (runId !== hubMotionRun || !document.body.contains(orbit)) return;
+    const targetIndex = (sourceIndex + 1) % stages.length;
+    const wake = wakes[sourceIndex];
+    const motion = motions[sourceIndex];
+    const finish = { done: false };
+
+    setActiveStage(sourceIndex);
+    wakes.forEach((item, index) => item.classList.toggle('running', index === sourceIndex));
+
+    const onEnd = () => arrive(sourceIndex, targetIndex, wake, finish);
+    motion.addEventListener('endEvent', onEnd, { once: true });
+
+    if (typeof motion.beginElement === 'function') {
+      motion.beginElement();
+    } else {
+      wake.classList.add('css-fallback');
     }
-    activeIndex = (activeIndex + 1) % stages.length;
-    selectNext();
-  }, 2050);
+
+    hubMotionTimer = setTimeout(onEnd, travelMs + 120);
+  };
+
+  launch(0);
 }
 
 function renderBoard() {
