@@ -197,13 +197,39 @@ function renderHub() {
       endY: y - uy * stageEdge,
     };
   });
+  const flows = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const dx = next.x - point.x;
+    const dy = next.y - point.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const ux = dx / distance;
+    const uy = dy / distance;
+    const trim = 48;
+    const sx = point.x + ux * trim;
+    const sy = point.y + uy * trim;
+    const ex = next.x - ux * trim;
+    const ey = next.y - uy * trim;
+    const mx = (sx + ex) / 2;
+    const my = (sy + ey) / 2;
+    const ox = mx - cx;
+    const oy = my - cy;
+    const od = Math.hypot(ox, oy) || 1;
+    const bend = 62;
+    const qx = mx + ox / od * bend;
+    const qy = my + oy / od * bend;
+    return { index, d: `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}` };
+  });
+
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
     <div class="hub-orbit" aria-label="Etapas do processo">
       <div class="hub-flow-bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">${points.map(({ startX, startY, endX, endY, index }) => {
-        const d = `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`;
-        return `<path class="hub-ray" data-hub-ray="${index}" d="${d}"/><path class="hub-wave" data-hub-wave="${index}" pathLength="1" style="--wave-delay:${(index * .32).toFixed(2)}s" d="${d}"/>`;
-      }).join('')}</svg>
+      <svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">
+        ${points.map(({ startX, startY, endX, endY, index }) => {
+          const d = `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`;
+          return `<path class="hub-ray" data-hub-ray="${index}" d="${d}"/>`;
+        }).join('')}
+        ${flows.map(({ index, d }) => `<path class="hub-sequence-line" data-flow-line="${index}" d="${d}"/><path class="hub-sequence-wave" data-flow-wave="${index}" pathLength="1" d="${d}"/>`).join('')}
+      </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
       ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
     </div></main>`;
@@ -221,14 +247,24 @@ function startHubMotion() {
 
   const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
   const rays = [...orbit.querySelectorAll('[data-hub-ray]')];
-  const waves = [...orbit.querySelectorAll('[data-hub-wave]')];
+  const flowLines = [...orbit.querySelectorAll('[data-flow-line]')];
+  const flowWaves = [...orbit.querySelectorAll('[data-flow-wave]')];
   if (!stages.length) return;
 
   let activeIndex = 0;
   const selectNext = () => {
-    stages.forEach((button, index) => button.classList.toggle('auto-hover', index === activeIndex));
-    rays.forEach((ray, index) => ray.classList.toggle('auto-active', index === activeIndex));
-    waves.forEach((wave, index) => wave.classList.toggle('auto-active', index === activeIndex));
+    const targetIndex = (activeIndex + 1) % stages.length;
+    stages.forEach((button, index) => {
+      button.classList.toggle('auto-hover', index === activeIndex);
+      button.classList.toggle('flow-target', index === targetIndex);
+    });
+    rays.forEach((ray, index) => ray.classList.toggle('auto-active', index === activeIndex || index === targetIndex));
+    flowLines.forEach((line, index) => line.classList.toggle('auto-active', index === activeIndex));
+    flowWaves.forEach((wave, index) => {
+      const active = index === activeIndex;
+      wave.classList.remove('auto-active');
+      if (active) requestAnimationFrame(() => wave.classList.add('auto-active'));
+    });
   };
 
   selectNext();
@@ -239,7 +275,7 @@ function startHubMotion() {
     }
     activeIndex = (activeIndex + 1) % stages.length;
     selectNext();
-  }, 1800);
+  }, 1900);
 }
 
 function renderBoard() {
