@@ -171,3 +171,11 @@
   .hub-logout { top: 12px; right: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .hub-stage-icon { animation: none; } }
+/* O conteúdo rola sem deslocar a navegação e o cabeçalho. */
+.shell { height: 100svh; min-height: 0; overflow: hidden; }
+.sidebar { height: 100svh; position: sticky; top: 0; align-self: flex-start; overflow-y: auto; }
+.workspace { height: 100svh; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.topbar { position: sticky; top: 0; z-index: 5; background: #101827; }
+.map-viewport { cursor: grab; overscroll-behavior-x: contain; }
+.map-viewport.dragging, .map-viewport.dragging * { cursor: grabbing !important; user-select: none; }
+.map-viewport:focus-visible { outline: 2px solid #f4c67d; outline-offset: -2px; }
