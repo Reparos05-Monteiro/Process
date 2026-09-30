@@ -106,7 +106,7 @@
 .hub-logout:hover { color: #f1ca8a; border-color: #a08053; }
 .hub-orbit { position: relative; display: block; flex: none; width: min(1320px, 100%); height: min(100svh, 720px); min-height: 470px; max-height: 720px; margin: 0; padding: 0; }
 .hub-orbit svg.hub-rays { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
-.hub-orbit svg.hub-rays path { fill: none; stroke: #8192a5; stroke-opacity: .34; stroke-width: 1.15; stroke-dasharray: 2 6; }
+.hub-orbit svg.hub-rays > path { fill: none; stroke: none; opacity: 0; }
 .hub-center {
   width: 154px; height: 154px; border: 7px solid #68727d; border-radius: 50%;
   background: #252c34; color: #ebf0f4;
