@@ -29,6 +29,8 @@ let noticeTimer;
 let authSubscription;
 let loginInProgress = false;
 let composingSearch = false;
+let hubMotionFrame = 0;
+let hubMotionStartedAt = 0;
 
 const admin = () => state.member?.role === 'admin';
 const stage = id => state.stages.find(item => item.id === id);
@@ -129,6 +131,7 @@ async function initialize() {
 }
 
 function render() {
+  stopHubMotion();
   if (!configured) {
     app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
     return;
@@ -141,6 +144,7 @@ function render() {
   if (!state.user) { app.innerHTML = renderAuth(); return; }
   if (!state.member) { app.innerHTML = renderPending(); return; }
   app.innerHTML = (state.view === 'hub' ? renderHub() : renderBoard()) + renderPanel();
+  if (state.view === 'hub') requestAnimationFrame(startHubMotion);
 }
 
 function renderAuth() {
@@ -171,15 +175,97 @@ function stageIcon(symbol) {
 
 function renderHub() {
   const n = state.stages.length;
+  const cx = 600;
+  const cy = 310;
+  const rx = 470;
+  const ry = 210;
+  const centerEdge = 92;
+  const stageEdge = 42;
   const points = state.stages.map((item, index) => {
     const angle = (-150 + index * 360 / Math.max(n, 1)) * Math.PI / 180;
-    return { item, x: 600 + 470 * Math.cos(angle), y: 310 + 210 * Math.sin(angle) };
+    const x = cx + rx * Math.cos(angle);
+    const y = cy + ry * Math.sin(angle);
+    const dx = x - cx;
+    const dy = y - cy;
+    const distance = Math.hypot(dx, dy) || 1;
+    const ux = dx / distance;
+    const uy = dy / distance;
+    return {
+      item, index, x, y,
+      startX: cx + ux * centerEdge,
+      startY: cy + uy * centerEdge,
+      endX: x - ux * stageEdge,
+      endY: y - uy * stageEdge,
+    };
   });
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
-    <div class="hub-orbit" aria-label="Etapas do processo"><svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">${points.map(({ x, y }) => `<path d="M600 310 L${x.toFixed(1)} ${y.toFixed(1)}"/>`).join('')}</svg>
+    <div class="hub-orbit" aria-label="Etapas do processo"><svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">${points.map(({ startX, startY, endX, endY, index }) => `<path class="hub-ray" data-hub-ray="${index}" style="--ray-delay:${(index * .24).toFixed(2)}s" d="M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}"/>`).join('')}</svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
-      ${points.map(({ item, x, y }) => `<button class="hub-stage" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
+      ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
     </div></main>`;
+}
+
+function stopHubMotion() {
+  if (hubMotionFrame) cancelAnimationFrame(hubMotionFrame);
+  hubMotionFrame = 0;
+  hubMotionStartedAt = 0;
+}
+
+function startHubMotion() {
+  stopHubMotion();
+  const orbit = document.querySelector('.hub-orbit');
+  if (!orbit || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
+  const rays = [...orbit.querySelectorAll('[data-hub-ray]')];
+  if (!stages.length || stages.length !== rays.length) return;
+
+  const cx = 600;
+  const cy = 310;
+  const rx = 470;
+  const ry = 210;
+  const centerEdge = 92;
+  const stageEdge = 42;
+  const orbitDuration = 56000;
+  const hoverStep = 1650;
+  hubMotionStartedAt = performance.now();
+
+  const frame = now => {
+    if (!document.body.contains(orbit)) {
+      stopHubMotion();
+      return;
+    }
+
+    const elapsed = now - hubMotionStartedAt;
+    const rotation = elapsed / orbitDuration * Math.PI * 2;
+    const activeIndex = Math.floor(elapsed / hoverStep) % stages.length;
+
+    stages.forEach((button, index) => {
+      const angle = (-150 + index * 360 / stages.length) * Math.PI / 180 + rotation;
+      const x = cx + rx * Math.cos(angle);
+      const y = cy + ry * Math.sin(angle);
+      const dx = x - cx;
+      const dy = y - cy;
+      const distance = Math.hypot(dx, dy) || 1;
+      const ux = dx / distance;
+      const uy = dy / distance;
+      const startX = cx + ux * centerEdge;
+      const startY = cy + uy * centerEdge;
+      const endX = x - ux * stageEdge;
+      const endY = y - uy * stageEdge;
+
+      button.style.setProperty('--hub-x', `${(x / 12).toFixed(3)}%`);
+      button.style.setProperty('--hub-y', `${(y / 6.2).toFixed(3)}%`);
+      button.classList.toggle('auto-hover', index === activeIndex);
+
+      const ray = rays[index];
+      ray.setAttribute('d', `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`);
+      ray.classList.toggle('auto-active', index === activeIndex);
+    });
+
+    hubMotionFrame = requestAnimationFrame(frame);
+  };
+
+  hubMotionFrame = requestAnimationFrame(frame);
 }
 
 function renderBoard() {
