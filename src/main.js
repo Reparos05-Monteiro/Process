@@ -130,7 +130,7 @@ async function initialize() {
 
 function render() {
   if (!configured) {
-    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R<span>·</span></div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
+    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
     return;
   }
   if (state.loading) { app.innerHTML = '<main class="centered"><p>Carregando o mapa de reparos…</p></main>'; return; }
@@ -147,7 +147,7 @@ function renderAuth() {
   const signup = state.authMode === 'signup';
   const confirmation = state.authMode === 'confirm';
   return `<main class="auth-screen"><div class="auth-ambient" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <div class="auth-layout"><section class="auth-intro"><div class="auth-brand"><span>R<span>·</span></span> REPAROS</div><span class="auth-kicker">CENTRAL DE PROCESSOS</span><h1>Seu fluxo,<br><em>em movimento.</em></h1><p>Organize cada reparo no passo certo.</p><div class="auth-mini-orbit" aria-hidden="true"><span>◇</span><span>◈</span><span>↗</span><b>R·</b><span>✳</span><span>✓</span><span>↺</span></div></section>
+    <div class="auth-layout"><section class="auth-intro"><div class="auth-brand"><span>R</span> REPAROS</div><span class="auth-kicker">CENTRAL DE PROCESSOS</span><h1>Seu fluxo,<br><em>em movimento.</em></h1><p>Organize cada reparo no passo certo.</p><div class="auth-mini-orbit" aria-hidden="true"><span>◇</span><span>◈</span><span>↗</span><b>R</b><span>✳</span><span>✓</span><span>↺</span></div></section>
       <section class="auth-card" aria-label="Acesso ao sistema">${confirmation ? `<span class="auth-card-kicker">CONFIRMAÇÃO</span><h2>Confira seu e-mail.</h2><p>Enviamos um link de confirmação para <strong>${e(state.signupEmail)}</strong>. Depois de confirmar, volte e entre com sua senha.</p><button class="secondary full" data-action="auth-login">Voltar ao login</button>` : `<span class="auth-card-kicker">${signup ? 'NOVA CONTA' : 'BEM-VINDO DE VOLTA'}</span><h2>${signup ? 'Criar conta' : 'Entrar no sistema'}</h2><p>${signup ? 'Use seu e-mail para solicitar acesso à central.' : 'Acesse sua central de reparos.'}</p>
         <form id="${signup ? 'signup-form' : 'login-form'}" class="auth-form"><label>E-mail<input type="email" name="email" autocomplete="email" placeholder="voce@exemplo.com" required></label><label>Senha<input type="password" name="password" autocomplete="${signup ? 'new-password' : 'current-password'}" ${signup ? 'minlength="8"' : ''} placeholder="${signup ? 'Mínimo de 8 caracteres' : 'Sua senha'}" required></label>${signup ? '<label>Confirmar senha<input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required></label>' : ''}<button type="submit" class="primary full">${signup ? 'Criar minha conta' : 'Entrar'} <span>→</span></button></form><div class="auth-switch">${signup ? 'Já tem uma conta?' : 'Ainda não tem conta?'} <button data-action="${signup ? 'auth-login' : 'auth-signup'}">${signup ? 'Entrar' : 'Criar conta'}</button></div>`}</section>
     </div></main>`;
@@ -177,7 +177,7 @@ function renderHub() {
   });
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
     <div class="hub-orbit" aria-label="Etapas do processo"><svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">${points.map(({ x, y }) => `<path d="M600 310 L${x.toFixed(1)} ${y.toFixed(1)}"/>`).join('')}</svg>
-      <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R<span>·</span></span><strong>REPAROS</strong><small>ENTRAR</small></button>
+      <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
       ${points.map(({ item, x, y }) => `<button class="hub-stage" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
     </div></main>`;
 }
@@ -187,12 +187,12 @@ function renderBoard() {
   const width = Math.max(760, n * 230 + 50);
   const visible = casesForStage(state.cases, null, state.query, state.sort);
   const aged = state.cases.filter(item => daysSince(item.opened_on) >= state.settings.stale_days).length;
-  return `<div class="shell"><aside class="sidebar" aria-label="Navegação"><button class="sidebar-brand" data-action="home" aria-label="Início">R<span>·</span></button><div class="side-links"><button class="side-button" data-action="home" title="Início" aria-label="Início">⌂</button><button class="side-button selected" data-action="all" title="Todos os casos" aria-label="Todos os casos">▦</button>${admin() ? '<button class="side-button" data-action="settings" title="Configurações" aria-label="Configurações">⚙</button>' : ''}</div><button class="side-button bottom" data-action="logout" title="Sair" aria-label="Sair">⇥</button></aside>
+  return `<div class="shell"><aside class="sidebar" aria-label="Navegação"><button class="sidebar-brand" data-action="home" aria-label="Início">R</button><div class="side-links"><button class="side-button" data-action="home" title="Início" aria-label="Início">⌂</button><button class="side-button selected" data-action="all" title="Todos os casos" aria-label="Todos os casos">▦</button>${admin() ? '<button class="side-button" data-action="settings" title="Configurações" aria-label="Configurações">⚙</button>' : ''}</div><button class="side-button bottom" data-action="logout" title="Sair" aria-label="Sair">⇥</button></aside>
     <div class="workspace"><header class="topbar"><span>REPAROS <i>/</i> SISTEMA COMPLETO</span><div class="topbar-actions"><span>${admin() ? 'ADMINISTRADOR' : 'EQUIPE'} <i>·</i> ${e(state.user.email)}</span><button class="text-button" data-action="refresh" title="Atualizar dados">Atualizar ↻</button></div></header>
       <main class="main"><div class="main-heading"><div><span class="eyebrow">CENTRAL DE ACOMPANHAMENTO</span><h1>${e(state.settings.title)}<span class="star">✳</span></h1><p>Cada etapa mostra alguns cartões. Clique nela para acessar todos os casos.</p></div><button class="primary" data-action="new-case">+ Novo caso</button></div>
       <div class="toolbar"><div class="stat"><strong>${state.cases.length}</strong><span>casos no sistema</span></div><div class="stat"><strong>${aged}</strong><span>há ${state.settings.stale_days}+ dias</span></div><div class="stat"><strong>${n}</strong><span>etapas do fluxo</span></div><label class="search">⌕ <input id="search" type="search" value="${e(state.query)}" placeholder="Buscar caso, endereço ou responsável" aria-label="Buscar casos"></label></div>
       <section class="board"><div class="board-heading"><div><span class="eyebrow">VISÃO DO FLUXO</span><h2>Onde cada caso está agora</h2></div><button class="text-button" data-action="all">Ver todos os casos →</button></div>
-        <div class="map-viewport"><div class="map-canvas" style="width:${width}px"><svg class="connection-layer" width="${width}" height="690" viewBox="0 0 ${width} 690" aria-hidden="true">${state.stages.slice(0, -1).map((_, i) => `<path class="spine-line" d="M${130 + i * 230} 343 L${360 + i * 230} 343"/>`).join('')}${state.stages.map((item, i) => {
+        <div class="map-viewport" role="region" aria-label="Mapa de etapas, arraste horizontalmente para explorar" tabindex="0"><div class="map-canvas" style="width:${width}px"><svg class="connection-layer" width="${width}" height="690" viewBox="0 0 ${width} 690" aria-hidden="true">${state.stages.slice(0, -1).map((_, i) => `<path class="spine-line" d="M${130 + i * 230} 343 L${360 + i * 230} 343"/>`).join('')}${state.stages.map((item, i) => {
           const stageCases = visible.filter(c => c.stage_id === item.id);
           const center = 130 + i * 230;
           return `<path class="thread" stroke="${safeColor(item.color)}" d="M${center} 282 L${center} 202" style="opacity:${stageCases.length ? 1 : .25}"/><path class="thread" stroke="${safeColor(item.color)}" d="M${center} 405 L${center} 492" style="opacity:${stageCases.length > 1 ? 1 : .25}"/>`;
@@ -341,6 +341,51 @@ document.addEventListener('click', async event => {
     catch (error) { button.disabled = false; notify(error.message, true); }
   }
 });
+
+// O arraste usa o mouse/caneta; no toque, a rolagem nativa continua ativa.
+let mapDrag = null;
+let suppressMapClick = false;
+
+document.addEventListener('pointerdown', event => {
+  const viewport = event.target.closest('.map-viewport');
+  if (!viewport || viewport.scrollWidth <= viewport.clientWidth + 1 ||
+      event.button !== 0 || !['mouse', 'pen'].includes(event.pointerType) ||
+      event.target.closest('input, textarea, select, a, [contenteditable="true"]')) return;
+  mapDrag = {
+    viewport, pointerId: event.pointerId,
+    startX: event.clientX, startScroll: viewport.scrollLeft, active: false,
+  };
+});
+
+document.addEventListener('pointermove', event => {
+  if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
+  const distance = event.clientX - mapDrag.startX;
+  if (!mapDrag.active && Math.abs(distance) < 6) return;
+  if (!mapDrag.active) {
+    mapDrag.active = true;
+    mapDrag.viewport.classList.add('dragging');
+  }
+  mapDrag.viewport.scrollLeft = mapDrag.startScroll - distance;
+  event.preventDefault();
+});
+
+function endMapDrag(event) {
+  if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
+  if (mapDrag.active) {
+    mapDrag.viewport.classList.remove('dragging');
+    suppressMapClick = true;
+    setTimeout(() => { suppressMapClick = false; }, 0);
+  }
+  mapDrag = null;
+}
+document.addEventListener('pointerup', endMapDrag);
+document.addEventListener('pointercancel', endMapDrag);
+document.addEventListener('click', event => {
+  if (!suppressMapClick || !event.target.closest('.map-viewport')) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  suppressMapClick = false;
+}, true);
 
 document.addEventListener('input', event => {
   if (event.target.id !== 'search' || composingSearch) return;
