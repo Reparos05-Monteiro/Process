@@ -67,3 +67,9 @@ Teste com a conta administradora: entre pela bolha central, veja o mapa vazio, c
 - Busca e mapa carregam os casos em páginas de 500 registros. Para volumes grandes, será melhor paginar também a interface e fazer busca no servidor.
 - As configurações aceitam até 12 etapas pela interface para preservar a legibilidade do mapa. Os IDs de etapas são estáveis quando você muda seus nomes ou ordem.
 - Sem URL/chave e sem aplicação do SQL/cadastro do administrador, o pacote não é um sistema em produção. A tela mostra claramente a configuração pendente em vez de simular sucesso. Os testes SQL rodam em PostgreSQL local (PGlite); a instalação no Supabase real ainda precisa ser conferida após a publicação.
+
+## Configuração de produção do projeto Process
+
+A instalação `ProcessDATABASE` foi conectada usando `src/public-config.js`, que contém **somente** o endereço público e a chave `sb_publishable_` do Supabase (destinados ao navegador e sujeitos às políticas RLS). Não coloque segredos de servidor no repositório. Se `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` forem definidos nas variáveis de ambiente da Vercel, eles substituem a configuração pública padrão.
+
+Este repositório deve ser associado ao projeto existente `process` na equipe Vercel `reparos05-2577` (branch `main`, Vite, pasta `dist`). Para liberar os casos, primeiro crie um usuário em Supabase Authentication e cadastre seu UUID com papel `admin` em `repair_members`.
