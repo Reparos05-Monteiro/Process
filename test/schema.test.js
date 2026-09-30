@@ -14,14 +14,18 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
       create function auth.uid() returns uuid language sql stable as $$
         select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
       $$;
+      create function auth.jwt() returns jsonb language sql stable as $$
+        select jsonb_build_object('email', current_setting('request.jwt.claim.email', true));
+      $$;
       grant usage on schema auth to anon, authenticated;
-      grant execute on function auth.uid() to anon, authenticated;
+      grant execute on function auth.uid(), auth.jwt() to anon, authenticated;
     `);
     await db.exec(await readFile(new URL('../supabase/schema.sql', import.meta.url), 'utf8'));
     const admin = '00000000-0000-4000-8000-000000000001';
     const editor = '00000000-0000-4000-8000-000000000002';
+    const pending = '00000000-0000-4000-8000-000000000003';
     await db.exec(`
-      insert into auth.users (id) values ('${admin}'), ('${editor}');
+      insert into auth.users (id) values ('${admin}'), ('${editor}'), ('${pending}');
       insert into public.repair_members (user_id,role)
         values ('${admin}','admin'), ('${editor}','editor');
     `);
@@ -34,6 +38,13 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     await assert.rejects(db.query('select * from public.repair_cases'), /permission denied/);
     await db.exec('reset role');
 
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${pending}', false);
+      select set_config('request.jwt.claim.email', 'novo@example.com', false);`);
+    await db.query('insert into public.repair_access_requests(user_id,email) values ($1,$2)', [pending, 'novo@example.com']);
+    assert.equal((await db.query('select count(*)::integer as n from public.repair_cases')).rows[0].n, 0);
+    await assert.rejects(db.query("insert into public.repair_members(user_id,role) values ($1,'admin')", [pending]), /row-level security/);
+    await db.exec('reset role');
+
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${editor}', false);`);
     assert.equal((await db.query("update public.repair_settings set title='Indevido' where id=1 returning id")).rows.length, 0);
     await assert.rejects(db.query("insert into public.repair_stages(name,sort_order) values('Indevida',70)"), /row-level security/);
@@ -44,6 +55,10 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     await db.exec('reset role');
 
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`);
+    assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 1);
+    await db.query("insert into public.repair_members(user_id,role) values ($1,'editor')", [pending]);
+    await db.query('delete from public.repair_access_requests where user_id=$1', [pending]);
+    assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 0);
     assert.equal((await db.query("update public.repair_settings set title='Central Nova' where id=1 returning id")).rows.length, 1);
     const ids = (await db.query('select id from public.repair_stages order by sort_order')).rows.map(r => r.id);
     const reversed = [...ids].reverse();

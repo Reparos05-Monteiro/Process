@@ -1,12 +1,34 @@
 -- Execute uma vez no SQL Editor do projeto Supabase escolhido.
 -- Não remove registros existentes; novas instalações começam com 0 casos.
--- Crie os usuários em Authentication > Users e cadastre seus UUIDs em repair_members.
+-- Usuários criam suas contas no Supabase Auth; a primeira conta admin é vinculada
+-- manualmente uma vez. Depois o admin aprova editores pela interface.
 
 create table if not exists public.repair_members (
   user_id uuid primary key references auth.users(id) on delete cascade,
   role text not null check (role in ('admin', 'editor')),
   created_at timestamptz not null default now()
 );
+
+-- A conta é criada pelo Supabase Auth; o acesso aos casos aguarda aprovação.
+create table if not exists public.repair_access_requests (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null check (char_length(email) between 3 and 254),
+  requested_at timestamptz not null default now()
+);
+
+-- Somente uma função interna consulta a própria tabela de membros ao aprovar.
+-- O schema private não deve ser incluído nos schemas expostos pela Data API.
+create schema if not exists private;
+create or replace function private.repair_is_admin()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select (select auth.uid()) is not null and exists (
+    select 1 from public.repair_members
+    where user_id = (select auth.uid()) and role = 'admin'
+  );
+$$;
+revoke all on function private.repair_is_admin() from public, anon, authenticated;
+grant usage on schema private to authenticated;
+grant execute on function private.repair_is_admin() to authenticated;
 
 create table if not exists public.repair_stages (
   id uuid primary key default gen_random_uuid(),
@@ -82,14 +104,17 @@ revoke all on function public.repair_reorder_stages(uuid[]) from public, anon;
 grant execute on function public.repair_reorder_stages(uuid[]) to authenticated;
 
 alter table public.repair_members enable row level security;
+alter table public.repair_access_requests enable row level security;
 alter table public.repair_stages enable row level security;
 alter table public.repair_settings enable row level security;
 alter table public.repair_cases enable row level security;
 
 -- Remove permissões automáticas que projetos antigos podem ter criado.
 grant usage on schema public to anon, authenticated;
-revoke all on public.repair_members, public.repair_stages, public.repair_settings, public.repair_cases from anon, authenticated;
+revoke all on public.repair_members, public.repair_access_requests, public.repair_stages, public.repair_settings, public.repair_cases from anon, authenticated;
 grant select on public.repair_members to authenticated;
+grant insert on public.repair_members to authenticated;
+grant select, insert, delete on public.repair_access_requests to authenticated;
 grant select on public.repair_stages, public.repair_settings to anon, authenticated;
 grant insert, delete on public.repair_stages to authenticated;
 grant update (name, description, color, icon, sort_order) on public.repair_stages to authenticated;
@@ -103,6 +128,24 @@ grant usage on sequence public.repair_cases_id_seq to authenticated;
 drop policy if exists repair_members_read_self on public.repair_members;
 create policy repair_members_read_self on public.repair_members for select to authenticated
   using (user_id = (select auth.uid()));
+drop policy if exists repair_members_add_editor on public.repair_members;
+create policy repair_members_add_editor on public.repair_members for insert to authenticated
+  with check (role = 'editor' and (select private.repair_is_admin()));
+
+drop policy if exists repair_access_requests_read on public.repair_access_requests;
+create policy repair_access_requests_read on public.repair_access_requests for select to authenticated
+  using (user_id = (select auth.uid()) or exists (
+    select 1 from public.repair_members m
+    where m.user_id = (select auth.uid()) and m.role = 'admin'
+  ));
+drop policy if exists repair_access_requests_create on public.repair_access_requests;
+create policy repair_access_requests_create on public.repair_access_requests for insert to authenticated
+  with check (user_id = (select auth.uid())
+    and lower(email) = lower(coalesce((select auth.jwt())->>'email', '')));
+drop policy if exists repair_access_requests_delete_admin on public.repair_access_requests;
+create policy repair_access_requests_delete_admin on public.repair_access_requests for delete to authenticated
+  using (exists (select 1 from public.repair_members m
+    where m.user_id = (select auth.uid()) and m.role = 'admin'));
 
 drop policy if exists repair_stages_read on public.repair_stages;
 create policy repair_stages_read on public.repair_stages for select to anon, authenticated using (true);

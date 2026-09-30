@@ -1,26 +1,29 @@
 # Mapa de Reparos
 
-Central visual de processos com entrada em bolhas, mapa de etapas e cartões ligados por linhas. A base começa **sem casos**. As etapas iniciais são **Orçando → Análise → Enviado → Execução → Finalizado → Execução PR**.
+Central visual de processos com login/cadastro na primeira tela, uma entrada em bolhas após a autenticação e um mapa de etapas com cartões ligados por linhas. A base começa **sem casos**. As etapas iniciais são **Orçando → Análise → Enviado → Execução → Finalizado → Execução PR**.
 
 ## Funções
 
-- A bolha central abre o sistema; uma bolha de etapa abre a lista dela. A tela inicial não espalha os casos.
+- O visitante vê primeiro o login ou a criação de conta. Depois de entrar e receber acesso, vê uma entrada visual com a bolha central e as etapas. A bolha central abre o sistema; uma bolha de etapa abre a lista dela.
+- A conta é criada pelo próprio usuário, com e-mail e senha. Com a confirmação por e-mail habilitada, é preciso confirmar o endereço; depois, a conta aguarda aprovação do administrador. O administrador aprova editores em **Configurações**.
 - Pessoas autorizadas criam, consultam e editam casos, incluindo etapa, prioridade, data, endereço, descrição e observação.
 - Somente o administrador pode adicionar, renomear, colorir, descrever, reordenar ou excluir etapas vazias; também pode editar o nome do sistema, o limite de dias para alerta e a quantidade de cartões visíveis no mapa.
 - Administradores podem excluir casos. Editores não têm acesso às configurações.
-- A sessão é feita pelo Supabase Auth. Sem sessão, a página mostra as etapas, mas não os casos. Isto é necessário para impedir que dados de imóveis e pessoas fiquem públicos quando forem cadastrados.
+- A sessão é feita pelo Supabase Auth. Sem sessão, a página mostra somente o login/cadastro; uma conta ainda não aprovada mostra a tela de espera. As políticas RLS do banco protegem casos e alterações mesmo se alguém chamar a API diretamente.
 - O Supabase armazena tudo; não há casos fictícios, botão de restauração ou gravação de casos em `localStorage`.
 
 ## Arquivos
 
 | Arquivo | Função |
 | --- | --- |
-| `index.html`, `src/main.js`, `src/model.js`, `src/style.css` | Interface e lógica do sistema |
-| `supabase/schema.sql` | Tabelas, seis etapas iniciais, permissões RLS e função de reordenação |
+| `index.html`, `src/main.js`, `src/model.js`, `src/style.css`, `src/refinement.css` | Interface, autenticação e lógica do sistema |
+| `supabase/schema.sql` | Tabelas, seis etapas iniciais, pedidos de acesso, permissões RLS e função de reordenação |
 | `package.json`, `package-lock.json` | Dependências fixadas e scripts |
 | `.env.example` | Nomes das duas variáveis públicas necessárias |
-| `test/model.test.js`, `test/schema.test.js` | Testes de lógica, SQL e permissões em PostgreSQL local |
+| `test/model.test.js`, `test/schema.test.js`, `test/auth-flow.test.js` | Testes de lógica, SQL/RLS em PostgreSQL local e transições de autenticação simuladas |
+| `PREVIA_LOGIN.png`, `PREVIA_CADASTRO.png`, `PREVIA_ENTRADA.png` | Ilustrações das três telas; a aparência final deve ser conferida no navegador após o deploy |
 | `INSTRUCOES_PARA_PUBLICAR.md` | Roteiro completo para o outro chat |
+| `RESUMO_DA_ATUALIZACAO.md` | Mudanças deste pacote e testes executados |
 
 ## Instalação local
 
@@ -35,30 +38,35 @@ npm run dev
 ## Implantação
 
 1. Execute `supabase/schema.sql` no SQL Editor do projeto Supabase escolhido. O script não exclui dados preexistentes; em uma base nova cria **zero casos** e seis etapas.
-2. Em Supabase **Authentication > Providers**, habilite Email e desative cadastro público (signups) e acesso anônimo. Em **Authentication > Users**, crie ou identifique a conta do proprietário da central e copie o UUID do usuário. Não coloque senha em repositório ou conversa.
-3. No SQL Editor, substitua `UUID_DO_ADMIN` pelo UUID exato da conta e execute:
+2. Substitua os arquivos antigos do repositório `Reparos05-Monteiro/Process` por todos os arquivos desta entrega, preservando a estrutura de pastas, e faça commit na branch `main`. O ZIP é para transferência; **não** inclua o próprio ZIP, `node_modules`, `dist`, `.env.local`, `.git` ou `upload` no repositório. O antigo `app.js`, `styles.css` e `hub.css` da raiz foram substituídos por `src/`.
+3. Na Vercel, use o projeto `process` se já estiver criado e conecte o repositório/branch `main`; evite criar um segundo projeto. Configure **Framework Preset: Vite**, **Root Directory: `./`**, **Install Command: `npm ci`**, **Build Command: `npm run build`**, **Output Directory: `dist`**. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` em Production (e Preview, se usar prévias). Use a chave publishable, não service role. Reimplante após adicionar variáveis e obtenha a URL final.
+4. Em Supabase **Authentication**, deixe **Allow new users to sign up** habilitado nas configurações gerais; habilite o provedor **Email** e mantenha **Confirm Email** habilitado nas opções desse provedor. Não habilite **Allow anonymous sign-ins**. Em **URL Configuration**, defina **Site URL** como a URL publicada na Vercel e inclua essa URL de callback nas **Redirect URLs** permitidas. Para testes locais, inclua também a URL local do Vite, se necessário. Confira a entrega dos e-mails de confirmação; para uso real com mais usuários, configure o SMTP do seu domínio conforme a documentação do Supabase.
+5. Na URL publicada, clique em **Criar conta** e cadastre a conta do proprietário. Confirme o e-mail recebido e faça login. A tela **Aguardando liberação** exibirá o UUID da conta; confirme que ele corresponde ao usuário certo em **Authentication > Users**. Não informe a senha ao outro chat e não a coloque no repositório.
+6. Para ativar **somente essa conta** como administradora, substitua `UUID_DO_ADMIN` pelo UUID conferido e execute uma única vez no SQL Editor:
 
    ```sql
    insert into public.repair_members (user_id, role)
    values ('UUID_DO_ADMIN'::uuid, 'admin')
    on conflict (user_id) do update set role = excluded.role;
+
+   delete from public.repair_access_requests
+   where user_id = 'UUID_DO_ADMIN'::uuid;
    ```
 
-   Para permitir que outra pessoa trabalhe nos casos **sem** editar configurações, crie a conta dela em Authentication > Users e cadastre o UUID com `role = 'editor'`. Não adicione membros desconhecidos.
-4. Verifique no SQL Editor: `select count(*) from public.repair_cases;` deve retornar `0` em instalação nova. `select name from public.repair_stages order by sort_order;` mostra as seis etapas.
-5. Substitua os arquivos antigos do repositório `Reparos05-Monteiro/Process` por todos os arquivos desta entrega, preservando a estrutura de pastas, e faça commit na branch `main`. O ZIP é para transferência; **não** inclua o próprio ZIP, `node_modules`, `dist`, `.env.local`, `.git` ou `upload` no repositório. O antigo `app.js`, `styles.css` e `hub.css` da raiz foram substituídos por `src/`.
-6. Na Vercel, use o projeto `process` se já estiver criado e conecte o repositório/branch `main`; evite criar um segundo projeto. Configure **Framework Preset: Vite**, **Root Directory: `./`**, **Install Command: `npm ci`**, **Build Command: `npm run build`**, **Output Directory: `dist`**. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` em Production (e Preview, se usar prévias). Use a chave publishable, não service role. Reimplante após adicionar variáveis.
-7. Abra o endereço publicado e teste os fluxos descritos abaixo. Confira que o projeto Vercel mostra o repositório e o commit correto.
+   Depois disso, clique em **Verificar acesso** na tela de espera. A partir dessa primeira ativação, outras pessoas poderão criar suas contas; a aprovação delas como **editor** será feita pela administradora em **Configurações > Cadastros aguardando acesso**, diretamente no sistema. Não execute SQL de concessão de administrador para terceiros. Deixe o schema `private` fora dos schemas expostos pela Data API.
+7. Verifique no SQL Editor: `select count(*) from public.repair_cases;` deve retornar `0` em instalação nova. `select name from public.repair_stages order by sort_order;` mostra as seis etapas. O script usa `if not exists`, mas reaplicá-lo a uma base existente exige revisar as políticas e os dados antes; ele não apaga casos existentes.
+8. Abra o endereço publicado e teste os fluxos descritos abaixo. Confira que o projeto Vercel mostra o repositório e o commit correto.
 
 ## Conferências após publicar
 
 | Perfil | Deve funcionar | Deve ser bloqueado |
 | --- | --- | --- |
-| Visitante | Ver nomes das etapas | Ler ou gravar casos; modificar configurações |
-| Editor cadastrado | Criar e editar casos; mudar etapa | Adicionar, mover ou excluir etapas e configurações; excluir caso |
-| Administrador cadastrado | Editar etapas e preferências; gerir casos | Excluir etapa com casos associados |
+| Visitante | Ver login e criar conta | Ler ou gravar casos; modificar configurações |
+| Conta aguardando aprovação | Ver a tela de espera e solicitar verificação | Ver o mapa, ler casos ou editar configurações |
+| Editor aprovado | Criar e editar casos; mudar etapa | Adicionar, mover ou excluir etapas e configurações; excluir caso; aprovar pessoas |
+| Administrador ativado | Editar etapas e preferências; gerir casos e aprovar editores | Excluir etapa com casos associados |
 
-Teste com a conta administradora: entre pela bolha central, veja o mapa vazio, crie um caso temporário, mova para outra etapa, renomeie uma etapa em Configurações, reordene e confira a tela inicial. Exclua o caso temporário depois. Faça uma segunda tentativa com conta editor, se ela existir. A segurança real das operações vem das políticas do Supabase, não da ocultação de botões.
+Teste com a conta administradora: após o login, entre pela bolha central, veja o mapa vazio, crie um caso temporário, mova para outra etapa, renomeie uma etapa em Configurações, reordene e confira a tela inicial. Exclua o caso temporário depois. Crie uma segunda conta de teste, confirme o e-mail, aprove-a em Configurações e confira o perfil editor. A segurança real das operações vem das políticas do Supabase, não da ocultação de botões.
 
 ## Limites da versão
 
@@ -66,10 +74,10 @@ Teste com a conta administradora: entre pela bolha central, veja o mapa vazio, c
 - Mudanças feitas em outra sessão aparecem ao recarregar a página ou clicar em **Atualizar**; esta versão não usa Supabase Realtime.
 - Busca e mapa carregam os casos em páginas de 500 registros. Para volumes grandes, será melhor paginar também a interface e fazer busca no servidor.
 - As configurações aceitam até 12 etapas pela interface para preservar a legibilidade do mapa. Os IDs de etapas são estáveis quando você muda seus nomes ou ordem.
-- Sem URL/chave e sem aplicação do SQL/cadastro do administrador, o pacote não é um sistema em produção. A tela mostra claramente a configuração pendente em vez de simular sucesso. Os testes SQL rodam em PostgreSQL local (PGlite); a instalação no Supabase real ainda precisa ser conferida após a publicação.
+- Sem URL/chave, aplicação do SQL e ativação da primeira conta administradora, o pacote não é um sistema em produção. A tela mostra a configuração pendente em vez de simular sucesso. Os testes SQL rodam em PostgreSQL local (PGlite); cadastro/e-mail e instalação no Supabase real ainda precisam ser conferidos após a publicação.
 
-## Configuração de produção do projeto Process
+## Configuração desta implantação
 
-A instalação `ProcessDATABASE` foi conectada usando `src/public-config.js`, que contém **somente** o endereço público e a chave `sb_publishable_` do Supabase (destinados ao navegador e sujeitos às políticas RLS). Não coloque segredos de servidor no repositório. Se `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` forem definidos nas variáveis de ambiente da Vercel, eles substituem a configuração pública padrão.
+A produção usa o projeto Supabase `ProcessDATABASE`. O arquivo `src/public-config.js` contém somente a URL pública e a chave `sb_publishable_` destinada ao navegador; as políticas RLS continuam sendo a barreira de autorização. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` definidas na Vercel têm prioridade.
 
-Este repositório deve ser associado ao projeto existente `process` na equipe Vercel `reparos05-2577` (branch `main`, Vite, pasta `dist`). Para liberar os casos, primeiro crie um usuário em Supabase Authentication e cadastre seu UUID com papel `admin` em `repair_members`.
+O projeto Vercel oficial é `process`, ligado a `Reparos05-Monteiro/Process` na branch `main`. A configuração de Auth (cadastro por e-mail, confirmação de e-mail, Site URL e Redirect URLs) é feita no painel do Supabase. O primeiro administrador ainda precisa ser criado pelo fluxo de cadastro e vinculado uma única vez em `repair_members` conforme a seção de implantação acima.

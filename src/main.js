@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import './style.css';
+import './refinement.css';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './public-config.js';
 import {
   DEFAULT_SETTINGS, PRIORITIES, ICONS, escapeHTML as e, safeColor,
@@ -22,7 +23,7 @@ const db = configured ? createClient(url, key) : null;
 const state = {
   loading: true, error: '', user: null, member: null, stages: [], cases: [],
   settings: DEFAULT_SETTINGS, view: 'hub', panel: null, stageId: null,
-  caseId: null, query: '', sort: 'oldest', pendingStage: null,
+  caseId: null, query: '', sort: 'oldest', authMode: 'login', signupEmail: '', requests: [],
 };
 let noticeTimer;
 let authSubscription;
@@ -75,6 +76,11 @@ async function loadCases() {
   state.cases = rows;
 }
 
+async function loadRequests() {
+  state.requests = admin() ? requireData(await db.from('repair_access_requests')
+    .select('user_id,email,requested_at').order('requested_at', { ascending: false })) : [];
+}
+
 async function hydrateAuth() {
   const { data, error } = await db.auth.getUser();
   if (error && !/session missing/i.test(error.message)) throw error;
@@ -85,14 +91,19 @@ async function hydrateAuth() {
   const membership = requireData(await db.from('repair_members')
     .select('role').eq('user_id', state.user.id).maybeSingle());
   state.member = membership;
-  if (membership) await loadCases();
+  if (membership) {
+    await Promise.all([loadCases(), loadRequests()]);
+  } else {
+    const request = await db.from('repair_access_requests').insert({ user_id: state.user.id, email: state.user.email });
+    if (request.error && request.error.code !== '23505') throw request.error;
+  }
 }
 
 async function initialize() {
   if (!configured) { state.loading = false; render(); return; }
   try {
-    await loadPublic();
     await hydrateAuth();
+    if (state.member) await loadPublic();
     state.error = '';
   } catch (error) {
     state.error = `Não foi possível carregar o sistema: ${error.message}`;
@@ -104,12 +115,15 @@ async function initialize() {
   authSubscription = db.auth.onAuthStateChange(event => {
     if (event === 'SIGNED_OUT') {
       state.user = null; state.member = null; state.cases = [];
-      state.view = 'hub'; state.panel = null; state.pendingStage = null;
+      state.stages = []; state.requests = []; state.view = 'hub'; state.panel = null; state.authMode = 'login';
       render();
     }
     // Não chamar o cliente Supabase dentro do callback de autenticação.
     if (event === 'SIGNED_IN' && !state.user && !loginInProgress) {
-      setTimeout(() => hydrateAuth().then(render).catch(err => notify(err.message, true)), 0);
+      setTimeout(async () => {
+        try { await hydrateAuth(); if (state.member) await loadPublic(); render(); }
+        catch (err) { notify(err.message, true); }
+      }, 0);
     }
   }).data.subscription;
 }
@@ -124,25 +138,48 @@ function render() {
     app.innerHTML = `<main class="centered"><div class="empty-card"><h1>Conexão indisponível</h1><p>${e(state.error)}</p><button class="primary" data-action="retry">Tentar novamente</button></div></main>`;
     return;
   }
-  if (state.user && !state.member) {
-    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R<span>·</span></div><h1>Acesso não habilitado</h1><p>A conta ${e(state.user.email)} precisa ser cadastrada em <code>repair_members</code> pelo administrador.</p><button class="primary" data-action="logout">Sair</button></div></main>`;
-    return;
-  }
+  if (!state.user) { app.innerHTML = renderAuth(); return; }
+  if (!state.member) { app.innerHTML = renderPending(); return; }
   app.innerHTML = (state.view === 'hub' ? renderHub() : renderBoard()) + renderPanel();
+}
+
+function renderAuth() {
+  const signup = state.authMode === 'signup';
+  const confirmation = state.authMode === 'confirm';
+  return `<main class="auth-screen"><div class="auth-ambient" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="auth-layout"><section class="auth-intro"><div class="auth-brand"><span>R<span>·</span></span> REPAROS</div><span class="auth-kicker">CENTRAL DE PROCESSOS</span><h1>Seu fluxo,<br><em>em movimento.</em></h1><p>Organize cada reparo no passo certo.</p><div class="auth-mini-orbit" aria-hidden="true"><span>◇</span><span>◈</span><span>↗</span><b>R·</b><span>✳</span><span>✓</span><span>↺</span></div></section>
+      <section class="auth-card" aria-label="Acesso ao sistema">${confirmation ? `<span class="auth-card-kicker">CONFIRMAÇÃO</span><h2>Confira seu e-mail.</h2><p>Enviamos um link de confirmação para <strong>${e(state.signupEmail)}</strong>. Depois de confirmar, volte e entre com sua senha.</p><button class="secondary full" data-action="auth-login">Voltar ao login</button>` : `<span class="auth-card-kicker">${signup ? 'NOVA CONTA' : 'BEM-VINDO DE VOLTA'}</span><h2>${signup ? 'Criar conta' : 'Entrar no sistema'}</h2><p>${signup ? 'Use seu e-mail para solicitar acesso à central.' : 'Acesse sua central de reparos.'}</p>
+        <form id="${signup ? 'signup-form' : 'login-form'}" class="auth-form"><label>E-mail<input type="email" name="email" autocomplete="email" placeholder="voce@exemplo.com" required></label><label>Senha<input type="password" name="password" autocomplete="${signup ? 'new-password' : 'current-password'}" ${signup ? 'minlength="8"' : ''} placeholder="${signup ? 'Mínimo de 8 caracteres' : 'Sua senha'}" required></label>${signup ? '<label>Confirmar senha<input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required></label>' : ''}<button type="submit" class="primary full">${signup ? 'Criar minha conta' : 'Entrar'} <span>→</span></button></form><div class="auth-switch">${signup ? 'Já tem uma conta?' : 'Ainda não tem conta?'} <button data-action="${signup ? 'auth-login' : 'auth-signup'}">${signup ? 'Entrar' : 'Criar conta'}</button></div>`}</section>
+    </div></main>`;
+}
+
+function renderPending() {
+  return `<main class="auth-screen pending-screen"><div class="pending-card"><div class="pending-symbol">◷</div><span class="auth-card-kicker">CONTA CADASTRADA</span><h1>Aguardando liberação</h1><p>O cadastro de <strong>${e(state.user.email)}</strong> foi realizado. O administrador precisa liberar o acesso aos casos. Assim que ele fizer isso, clique em verificar.</p><div class="pending-id"><span>Identificador da conta</span><code>${e(state.user.id)}</code></div><button class="primary full" data-action="check-access">Verificar acesso</button><button class="text-button" data-action="logout">Sair da conta</button></div></main>`;
+}
+
+function stageIcon(symbol) {
+  const paths = {
+    '◇': '<path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h5"/>',
+    '◈': '<circle cx="11" cy="11" r="6"/><path d="m15.5 15.5 5 5M8 11h6M11 8v6"/>',
+    '↗': '<path d="M4 19 20 4M9 4h11v11"/>',
+    '✳': '<path d="M14 5a5 5 0 0 0-6 6l-5 5 4 4 5-5a5 5 0 0 0 6-6l-3 3-3-3z"/>',
+    '✓': '<circle cx="12" cy="12" r="9"/><path d="m7.5 12 3 3 6-6"/>',
+    '↺': '<path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/>',
+  };
+  return paths[symbol] ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[symbol]}</svg>` : `<span>${e(symbol)}</span>`;
 }
 
 function renderHub() {
   const n = state.stages.length;
   const points = state.stages.map((item, index) => {
     const angle = (-150 + index * 360 / Math.max(n, 1)) * Math.PI / 180;
-    return { item, x: 600 + 430 * Math.cos(angle), y: 305 + 210 * Math.sin(angle) };
+    return { item, x: 600 + 470 * Math.cos(angle), y: 310 + 210 * Math.sin(angle) };
   });
-  return `<main class="hub"><header class="hub-header"><span class="brandmark">R<span>·</span></span><span class="brand-label">${e(state.settings.title.toUpperCase())}<small> / CENTRAL DE PROCESSOS</small></span><span class="hub-status">${state.member ? `● ${e(state.user.email)}` : '● ACESSO À CENTRAL'}</span></header>
-    <section class="hub-intro"><span class="eyebrow">FLUXO DE REPAROS</span><h1>Escolha por onde começar.</h1><p>Entre na visão completa ou abra uma etapa para ver os casos dela.</p></section>
-    <div class="hub-orbit" aria-label="Etapas do processo"><svg viewBox="0 0 1200 610" preserveAspectRatio="none" aria-hidden="true">${points.map(({ x, y }) => `<path d="M600 305 L${x.toFixed(1)} ${y.toFixed(1)}"/>`).join('')}<circle cx="600" cy="305" r="235"/></svg>
-      <button class="hub-center" data-action="enter"><span class="hub-monogram">R<span>·</span></span><strong>REPAROS</strong><small>ENTRAR NO SISTEMA →</small></button>
-      ${points.map(({ item, x, y }, index) => `<button class="hub-stage" style="left:${(x / 12).toFixed(2)}%;top:${(y / 6.1).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir etapa ${e(item.name)}"><span class="hub-stage-icon">${e(item.icon)}${state.member ? `<b>${count(item.id)}</b>` : ''}</span><strong>${e(item.name)}</strong><small>${String(index + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}</small></button>`).join('')}
-    </div><footer class="hub-footer"><span>ETAPAS CONECTADAS AO PROCESSO</span>${state.member ? `<button class="text-button" data-action="logout">Sair da conta</button>` : '<span>Os casos são visíveis após entrar na conta</span>'}</footer></main>`;
+  return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
+    <div class="hub-orbit" aria-label="Etapas do processo"><svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">${points.map(({ x, y }) => `<path d="M600 310 L${x.toFixed(1)} ${y.toFixed(1)}"/>`).join('')}</svg>
+      <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R<span>·</span></span><strong>REPAROS</strong><small>ENTRAR</small></button>
+      ${points.map(({ item, x, y }) => `<button class="hub-stage" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
+    </div></main>`;
 }
 
 function renderBoard() {
@@ -193,10 +230,7 @@ function renderPanel() {
   const type = state.panel;
   if (!type) return '';
   let title = '', content = '';
-  if (type === 'login') {
-    title = 'Entrar na central';
-    content = `<p class="panel-muted">Entre com uma conta cadastrada pelo administrador para acessar os casos. As configurações exigem permissão de administrador.</p><form id="login-form" class="form-stack"><label class="field"><span>E-mail</span><input type="email" name="email" autocomplete="username" required></label><label class="field"><span>Senha</span><input type="password" name="password" autocomplete="current-password" required></label><button class="primary full" type="submit">Entrar →</button></form>`;
-  } else if (type === 'all' || type === 'stage') {
+  if (type === 'all' || type === 'stage') {
     const current = stage(state.stageId);
     title = type === 'all' ? 'Todos os casos' : current?.name ?? 'Etapa';
     const rows = casesForStage(state.cases, type === 'stage' ? state.stageId : null, state.query, state.sort);
@@ -211,7 +245,7 @@ function renderPanel() {
     content = `<p class="panel-muted">Aberto em ${formatDate(row.opened_on)} · atualizado em ${formatDate(row.updated_at?.slice(0, 10))}</p><form id="case-update" class="form-stack scroll-form">${field('Título *', 'title', row.title, 120)}${field('Endereço *', 'address', row.address, 180)}${field('Responsável *', 'owner', row.owner, 80)}<label class="field"><span>Etapa</span><select name="stage_id">${stageOptions(row.stage_id)}</select></label><label class="field"><span>Prioridade</span><select name="priority">${priorityOptions(row.priority)}</select></label><label class="field"><span>Data de abertura</span><input type="date" name="opened_on" value="${e(row.opened_on)}" required></label><label class="field"><span>Descrição</span><textarea name="description" maxlength="3000" rows="4">${e(row.description)}</textarea></label><label class="field"><span>Observação</span><textarea name="note" maxlength="5000" rows="4">${e(row.note)}</textarea></label><button class="primary full" type="submit">Salvar alterações</button>${admin() ? `<button class="danger full" type="button" data-action="delete-case" data-id="${row.id}">Excluir caso</button>` : ''}</form>`;
   } else if (type === 'settings' && admin()) {
     title = 'Configurações';
-    content = `<p class="panel-muted">Somente o administrador pode alterar estas opções. As mudanças aparecem para todos.</p><h3 class="panel-subheading">Etapas do processo</h3><div class="stage-settings">${state.stages.map((item, index) => `<div class="setting-row"><span class="setting-symbol" style="${style(item)}">${e(item.icon)}</span><span><strong>${e(item.name)}</strong><small>${e(item.description)}</small></span><button data-action="move-up" data-id="${e(item.id)}" ${index === 0 ? 'disabled' : ''} aria-label="Subir ${e(item.name)}">↑</button><button data-action="move-down" data-id="${e(item.id)}" ${index === state.stages.length - 1 ? 'disabled' : ''} aria-label="Descer ${e(item.name)}">↓</button><button data-action="edit-stage" data-id="${e(item.id)}" aria-label="Editar ${e(item.name)}">✎</button></div>`).join('')}</div><button class="secondary full" data-action="add-stage" ${state.stages.length >= 12 ? 'disabled' : ''}>+ Adicionar etapa ${state.stages.length >= 12 ? '(limite de 12)' : ''}</button><h3 class="panel-subheading">Preferências gerais</h3><form id="settings-form" class="form-stack">${field('Nome do sistema', 'title', state.settings.title, 60)}<label class="field"><span>Alerta de caso antigo (dias)</span><input type="number" name="stale_days" min="1" max="365" required value="${state.settings.stale_days}"></label><label class="field"><span>Cartões visíveis por etapa no mapa</span><select name="visible_cards">${[0, 1, 2].map(i => `<option value="${i}" ${i === state.settings.visible_cards ? 'selected' : ''}>${i}</option>`).join('')}</select></label><button class="primary full" type="submit">Salvar preferências</button></form>`;
+    content = `<p class="panel-muted">Somente o administrador pode alterar estas opções. As mudanças aparecem para todos.</p><h3 class="panel-subheading">Etapas do processo</h3><div class="stage-settings">${state.stages.map((item, index) => `<div class="setting-row"><span class="setting-symbol" style="${style(item)}">${e(item.icon)}</span><span><strong>${e(item.name)}</strong><small>${e(item.description)}</small></span><button data-action="move-up" data-id="${e(item.id)}" ${index === 0 ? 'disabled' : ''} aria-label="Subir ${e(item.name)}">↑</button><button data-action="move-down" data-id="${e(item.id)}" ${index === state.stages.length - 1 ? 'disabled' : ''} aria-label="Descer ${e(item.name)}">↓</button><button data-action="edit-stage" data-id="${e(item.id)}" aria-label="Editar ${e(item.name)}">✎</button></div>`).join('')}</div><button class="secondary full" data-action="add-stage" ${state.stages.length >= 12 ? 'disabled' : ''}>+ Adicionar etapa ${state.stages.length >= 12 ? '(limite de 12)' : ''}</button><h3 class="panel-subheading">Preferências gerais</h3><form id="settings-form" class="form-stack">${field('Nome do sistema', 'title', state.settings.title, 60)}<label class="field"><span>Alerta de caso antigo (dias)</span><input type="number" name="stale_days" min="1" max="365" required value="${state.settings.stale_days}"></label><label class="field"><span>Cartões visíveis por etapa no mapa</span><select name="visible_cards">${[0, 1, 2].map(i => `<option value="${i}" ${i === state.settings.visible_cards ? 'selected' : ''}>${i}</option>`).join('')}</select></label><button class="primary full" type="submit">Salvar preferências</button></form><h3 class="panel-subheading">Cadastros aguardando acesso (${state.requests.length})</h3><div class="access-requests">${state.requests.length ? state.requests.map(request => `<div class="access-request"><strong>${e(request.email)}</strong><small>${e(request.user_id)}</small><button class="secondary" data-action="approve-request" data-id="${e(request.user_id)}">Liberar como editor</button></div>`).join('') : '<p>Nenhum cadastro pendente.</p>'}</div>`;
   } else if (type === 'stage-form' && admin()) {
     const item = stage(state.stageId);
     title = item ? 'Editar etapa' : 'Adicionar etapa';
@@ -222,7 +256,6 @@ function renderPanel() {
 
 function openPanel(type) { state.panel = type; render(); document.querySelector('.panel input, .panel button')?.focus(); }
 function gateTo(destination, id = null) {
-  if (!state.member) { state.pendingStage = destination === 'stage' ? id : null; openPanel('login'); return; }
   state.view = 'board'; state.stageId = id;
   if (destination === 'stage') openPanel('stage'); else { state.panel = null; render(); }
 }
@@ -233,7 +266,7 @@ async function write(form, task, success) {
   try { await task(); await success(); }
   catch (error) { notify(error.message || 'Não foi possível salvar.', true); if (submit) submit.disabled = false; }
 }
-async function refresh() { await loadPublic(); if (state.member) await loadCases(); render(); }
+async function refresh() { await loadPublic(); if (state.member) await Promise.all([loadCases(), loadRequests()]); render(); }
 function caseValues(form, includeNote = false) {
   const data = new FormData(form);
   const value = name => String(data.get(name) ?? '').trim();
@@ -253,6 +286,24 @@ document.addEventListener('click', async event => {
   if (!button || button.disabled) return;
   const { action, id } = button.dataset;
   if (action === 'retry') { state.loading = true; state.error = ''; render(); await initialize(); }
+  if (action === 'auth-login' || action === 'auth-signup') {
+    state.authMode = action === 'auth-login' ? 'login' : 'signup'; render();
+    document.querySelector('.auth-form [name="email"]')?.focus();
+  }
+  if (action === 'check-access') {
+    button.disabled = true;
+    try { await hydrateAuth(); if (state.member) await loadPublic(); render(); if (!state.member) notify('Seu acesso ainda está pendente.'); }
+    catch (error) { button.disabled = false; notify(error.message, true); }
+  }
+  if (action === 'approve-request' && admin()) {
+    button.disabled = true;
+    try {
+      const added = await db.from('repair_members').insert({ user_id: id, role: 'editor' });
+      if (added.error && added.error.code !== '23505') throw added.error;
+      requireData(await db.from('repair_access_requests').delete().eq('user_id', id));
+      await loadRequests(); render(); notify('Acesso de editor liberado.');
+    } catch (error) { button.disabled = false; notify(error.message, true); }
+  }
   if (action === 'refresh') {
     button.disabled = true;
     try { await refresh(); notify('Dados atualizados.'); }
@@ -319,13 +370,28 @@ document.addEventListener('submit', async event => {
       try {
         requireData(await db.auth.signInWithPassword({ email: String(data.get('email')).trim(), password: String(data.get('password')) }));
         await hydrateAuth();
+        if (state.member) await loadPublic();
       } finally { loginInProgress = false; }
-      if (!state.member) throw new Error('Sua conta ainda não foi habilitada pelo administrador.');
     }, async () => {
-      state.view = 'board'; state.stageId = state.pendingStage;
-      state.panel = state.pendingStage ? 'stage' : null; state.pendingStage = null;
+      state.view = 'hub'; state.panel = null;
       render();
     });
+  }
+  if (form.id === 'signup-form') {
+    const data = new FormData(form);
+    const email = String(data.get('email')).trim();
+    const password = String(data.get('password'));
+    if (password !== String(data.get('confirm_password'))) { notify('As senhas não coincidem.', true); return; }
+    await write(form, async () => {
+      loginInProgress = true;
+      try {
+        const created = requireData(await db.auth.signUp({ email, password,
+          options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+        }));
+        if (created.session) { await hydrateAuth(); if (state.member) await loadPublic(); }
+        else { state.authMode = 'confirm'; state.signupEmail = email; }
+      } finally { loginInProgress = false; }
+    }, async () => render());
   }
   if (form.id === 'case-create') {
     let payload; try { payload = caseValues(form); } catch (error) { notify(error.message, true); return; }
