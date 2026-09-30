@@ -179,3 +179,80 @@
 .map-viewport { cursor: grab; overscroll-behavior-x: contain; }
 .map-viewport.dragging, .map-viewport.dragging * { cursor: grabbing !important; user-select: none; }
 .map-viewport:focus-visible { outline: 2px solid #f4c67d; outline-offset: -2px; }
+
+
+/* Tela inicial: conexões vivas, órbita lenta e destaque automático das etapas. */
+.hub-orbit .hub-ray {
+  fill: none;
+  stroke: #8192a5;
+  stroke-opacity: .38;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-dasharray: 4 10;
+  animation: hubRayTravel 1.75s linear infinite;
+  animation-delay: var(--ray-delay, 0s);
+  transition: stroke .28s, stroke-opacity .28s, stroke-width .28s, filter .28s;
+  vector-effect: non-scaling-stroke;
+}
+.hub-orbit .hub-ray.auto-active {
+  stroke: #f4c67d;
+  stroke-opacity: .98;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 6px #f4c67d99);
+}
+.hub-stage {
+  transition: transform .24s ease, filter .24s ease;
+  will-change: left, top, transform;
+}
+.hub-stage.auto-hover {
+  transform: translate(-50%, -50%) scale(1.08);
+  filter: drop-shadow(0 0 17px #e8b96124);
+}
+.hub-stage.auto-hover .hub-stage-icon {
+  background: color-mix(in srgb, var(--accent) 24%, #242c35);
+  border-color: var(--accent);
+  box-shadow: 0 17px 31px #0009, 0 0 27px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.hub-stage.auto-hover .hub-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+.hub-center {
+  isolation: isolate;
+}
+.hub-center::after {
+  content: "";
+  position: absolute;
+  inset: -13px;
+  z-index: -1;
+  border: 1px solid #efc67b33;
+  border-radius: 50%;
+  animation: hubCorePulse 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hubRayTravel {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -28; }
+}
+@keyframes hubCorePulse {
+  0%, 100% { transform: scale(.96); opacity: .18; }
+  50% { transform: scale(1.08); opacity: .62; }
+}
+
+@media (max-width: 760px) {
+  .hub-stage.auto-hover { transform: translate(-50%, -50%) scale(1.05); }
+  .hub-stage.auto-hover .hub-tooltip { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-orbit .hub-ray,
+  .hub-center::after {
+    animation: none !important;
+  }
+  .hub-stage.auto-hover {
+    transform: translate(-50%, -50%);
+    filter: none;
+  }
+}
