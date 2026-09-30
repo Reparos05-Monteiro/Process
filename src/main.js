@@ -225,11 +225,7 @@ function renderHub() {
     <div class="hub-orbit" aria-label="Etapas do processo">
       <div class="hub-flow-bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">
-        ${points.map(({ startX, startY, endX, endY, index }) => {
-          const d = `M${startX.toFixed(1)} ${startY.toFixed(1)} L${endX.toFixed(1)} ${endY.toFixed(1)}`;
-          return `<path class="hub-ray" data-hub-ray="${index}" d="${d}"/>`;
-        }).join('')}
-        ${flows.map(({ index, d }) => `<path id="hub-flow-path-${index}" class="hub-flow-motion-path" d="${d}"/><g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-wake-crest wake-wide" d="M-34 -12 Q-18 0 -34 12"/><path class="hub-wake-crest wake-mid" d="M-24 -8 Q-12 0 -24 8"/><path class="hub-wake-crest wake-near" d="M-15 -5 Q-7 0 -15 5"/><path class="hub-wake-fin" d="M-5 0 Q0 -4 6 0 Q0 4 -5 0Z"/><animateMotion data-flow-motion="${index}" dur="3.4s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
+        ${flows.map(({ index, d }) => `<path id="hub-flow-path-${index}" class="hub-flow-motion-path" d="${d}"/><g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-water-wake wake-wide" d="M-52 0 C-42 -17 -25 -19 -6 -4 C-25 -9 -39 -7 -52 0 C-39 7 -25 9 -6 4 C-25 19 -42 17 -52 0Z"/><path class="hub-water-wake wake-mid" d="M-38 0 C-30 -12 -18 -13 -4 -3 C-18 -6 -29 -5 -38 0 C-29 5 -18 6 -4 3 C-18 13 -30 12 -38 0Z"/><path class="hub-water-wake wake-near" d="M-24 0 C-19 -8 -11 -8 -2 -2 C-11 -4 -18 -3 -24 0 C-18 3 -11 4 -2 2 C-11 8 -19 8 -24 0Z"/><ellipse class="hub-water-glint" cx="-3" cy="0" rx="5.5" ry="3.3"/><animateMotion data-flow-motion="${index}" dur="4.6s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
       ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
@@ -249,21 +245,17 @@ function startHubMotion() {
   if (!orbit || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
-  const rays = [...orbit.querySelectorAll('[data-hub-ray]')];
   const wakes = [...orbit.querySelectorAll('[data-flow-wake]')];
   const motions = [...orbit.querySelectorAll('[data-flow-motion]')];
   if (!stages.length || wakes.length !== stages.length || motions.length !== stages.length) return;
 
-  const travelMs = 3400;
-  const dwellMs = 1550;
+  const travelMs = 4600;
+  const dwellMs = 1800;
 
   const setActiveStage = index => {
     stages.forEach((button, itemIndex) => {
       button.classList.toggle('auto-hover', itemIndex === index);
       button.classList.remove('flow-target', 'flow-arrived');
-    });
-    rays.forEach((ray, itemIndex) => {
-      ray.classList.toggle('auto-active', itemIndex === index);
     });
   };
 
@@ -279,10 +271,6 @@ function startHubMotion() {
       button.classList.toggle('flow-target', itemIndex === targetIndex);
       button.classList.remove('flow-arrived');
     });
-    rays.forEach((ray, itemIndex) => {
-      ray.classList.toggle('auto-active', itemIndex === targetIndex);
-    });
-
     const target = stages[targetIndex];
     void target.offsetWidth;
     target.classList.add('flow-arrived');
