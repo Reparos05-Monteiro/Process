@@ -181,7 +181,7 @@
 .map-viewport:focus-visible { outline: 2px solid #f4c67d; outline-offset: -2px; }
 
 
-/* Tela inicial: etapas fixas, onda em V sincronizada e fundo futurista discreto. */
+/* Tela inicial: fluxo fluido sem linhas, sincronizado e fundo futurista discreto. */
 .hub-flow-bg {
   position: absolute;
   inset: 0;
@@ -194,31 +194,31 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 11% 22%, #a6b9c828 0 1.2px, transparent 1.35px),
-    radial-gradient(circle at 18% 61%, #859db122 0 1px, transparent 1.2px),
-    radial-gradient(circle at 27% 82%, #9eb3c222 0 1.15px, transparent 1.3px),
-    radial-gradient(circle at 35% 29%, #ddb9781c 0 1px, transparent 1.2px),
-    radial-gradient(circle at 45% 11%, #8fa7ba21 0 1px, transparent 1.2px),
-    radial-gradient(circle at 56% 76%, #a1b5c421 0 1.15px, transparent 1.3px),
-    radial-gradient(circle at 67% 16%, #91a9bc20 0 1px, transparent 1.2px),
-    radial-gradient(circle at 74% 53%, #d5b47718 0 1px, transparent 1.2px),
-    radial-gradient(circle at 84% 79%, #9aafbf22 0 1.1px, transparent 1.25px),
-    radial-gradient(circle at 92% 31%, #8ba2b51f 0 1px, transparent 1.15px);
-  opacity: .82;
+    radial-gradient(circle at 10% 20%, #a8bac826 0 1.15px, transparent 1.3px),
+    radial-gradient(circle at 17% 60%, #879fb322 0 1px, transparent 1.15px),
+    radial-gradient(circle at 27% 82%, #9eb3c21f 0 1.1px, transparent 1.25px),
+    radial-gradient(circle at 35% 30%, #d7b47718 0 1px, transparent 1.15px),
+    radial-gradient(circle at 46% 12%, #91a8ba20 0 1px, transparent 1.15px),
+    radial-gradient(circle at 56% 76%, #a1b5c420 0 1.1px, transparent 1.25px),
+    radial-gradient(circle at 68% 17%, #91a9bc1f 0 1px, transparent 1.15px),
+    radial-gradient(circle at 75% 54%, #d4b37616 0 1px, transparent 1.15px),
+    radial-gradient(circle at 84% 79%, #9aafbf20 0 1.05px, transparent 1.2px),
+    radial-gradient(circle at 92% 31%, #8ba2b51e 0 1px, transparent 1.15px);
+  opacity: .72;
 }
 .hub-flow-bg::after {
   content: "";
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(760px, 66vw);
-  height: min(430px, 46vw);
+  width: min(720px, 64vw);
+  height: min(390px, 42vw);
   transform: translate(-50%, -50%);
   background:
-    radial-gradient(ellipse at center, #e6bb730d 0 7%, transparent 38%),
-    radial-gradient(ellipse at center, #7891a708 0 34%, transparent 72%);
-  filter: blur(26px);
-  opacity: .62;
+    radial-gradient(ellipse at center, #d8b36f0a 0 8%, transparent 42%),
+    radial-gradient(ellipse at center, #7891a706 0 38%, transparent 74%);
+  filter: blur(30px);
+  opacity: .52;
 }
 .hub-flow-bg i {
   position: absolute;
@@ -226,9 +226,9 @@
   height: 3px;
   border-radius: 50%;
   background: #a8bac8;
-  opacity: .16;
-  box-shadow: 0 0 8px #9fb2c340;
-  animation: hubDotFloat 9s ease-in-out infinite;
+  opacity: .14;
+  box-shadow: 0 0 8px #9fb2c338;
+  animation: hubDotFloat 10s ease-in-out infinite;
 }
 .hub-flow-bg i:nth-child(1){left:13%;top:35%;animation-delay:-1.1s}
 .hub-flow-bg i:nth-child(2){left:25%;top:69%;animation-delay:-4.2s}
@@ -237,29 +237,14 @@
 .hub-flow-bg i:nth-child(5){left:78%;top:71%;animation-delay:-3.6s}
 .hub-flow-bg i:nth-child(6){left:89%;top:43%;animation-delay:-6.3s}
 
-.hub-orbit .hub-ray {
-  fill: none;
-  stroke: #7d91a4;
-  stroke-opacity: .065;
-  stroke-width: .7;
-  stroke-linecap: round;
-  stroke-dasharray: 1 12;
-  transition: stroke .25s, stroke-opacity .25s, filter .25s;
-  vector-effect: non-scaling-stroke;
-}
-.hub-orbit .hub-ray.auto-active {
-  stroke: #d9b979;
-  stroke-opacity: .13;
-  filter: drop-shadow(0 0 3px #e9c47c20);
-}
-
-/* O caminho existe só para guiar a onda; nunca é desenhado. */
+/* O caminho só guia a animação. Nada dele é desenhado. */
 .hub-flow-motion-path {
   fill: none;
   stroke: none;
+  opacity: 0;
 }
 
-/* Esteira em V: três cristas e uma ponta luminosa viajando juntas. */
+/* Onda real: formas preenchidas e translúcidas, sem linhas ou contornos. */
 .hub-surface-wave {
   opacity: 0;
   pointer-events: none;
@@ -267,52 +252,46 @@
 .hub-surface-wave.running {
   opacity: 1;
 }
-.hub-wake-crest {
-  fill: none;
-  stroke: #a9bfce;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 5px #9eb5c55a);
+.hub-water-wake {
+  stroke: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: blur(.2px) drop-shadow(0 0 7px #9cb6c34c);
 }
-.hub-wake-crest.wake-wide {
-  stroke-width: 2.2;
-  stroke-opacity: .18;
-  animation: hubWakeBreath 1.15s ease-in-out infinite;
+.hub-water-wake.wake-wide {
+  fill: #89a9bb;
+  fill-opacity: .10;
+  animation: hubWaterBreathe 1.8s ease-in-out infinite;
 }
-.hub-wake-crest.wake-mid {
-  stroke-width: 2.1;
-  stroke-opacity: .34;
-  animation: hubWakeBreath 1.05s ease-in-out .12s infinite;
+.hub-water-wake.wake-mid {
+  fill: #a9c0cd;
+  fill-opacity: .17;
+  animation: hubWaterBreathe 1.55s ease-in-out .16s infinite;
 }
-.hub-wake-crest.wake-near {
-  stroke: #c0d0db;
-  stroke-width: 1.9;
-  stroke-opacity: .55;
-  animation: hubWakeBreath .95s ease-in-out .2s infinite;
+.hub-water-wake.wake-near {
+  fill: #cad7df;
+  fill-opacity: .26;
+  animation: hubWaterBreathe 1.35s ease-in-out .28s infinite;
 }
-.hub-wake-fin {
-  fill: #f1c57c;
-  fill-opacity: .78;
-  stroke: #f5d6a0;
-  stroke-width: .8;
-  filter: drop-shadow(0 0 7px #f2c67e8a);
-  animation: hubFinPulse .9s ease-in-out infinite;
-}
-.hub-surface-wave.css-fallback {
-  offset-rotate: auto;
-  animation: none;
+.hub-water-glint {
+  stroke: none;
+  fill: #f0c984;
+  fill-opacity: .46;
+  filter: blur(.45px) drop-shadow(0 0 8px #efc67b5e);
+  animation: hubWaterGlint 1.2s ease-in-out infinite;
 }
 
 .hub-stage {
-  transition: transform .28s ease, filter .28s ease;
+  transition: transform .32s ease, filter .32s ease;
 }
 .hub-stage.auto-hover {
-  transform: translate(-50%, -50%) scale(1.07);
-  filter: drop-shadow(0 0 14px #e8b9611d);
+  transform: translate(-50%, -50%) scale(1.06);
+  filter: drop-shadow(0 0 12px #e8b96118);
 }
 .hub-stage.auto-hover .hub-stage-icon {
-  background: color-mix(in srgb, var(--accent) 20%, #242c35);
-  border-color: color-mix(in srgb, var(--accent) 72%, #687786);
-  box-shadow: 0 15px 28px #0008, 0 0 20px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, #242c35);
+  border-color: color-mix(in srgb, var(--accent) 65%, #687786);
+  box-shadow: 0 14px 26px #0008, 0 0 18px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 .hub-stage.auto-hover .hub-tooltip {
   opacity: 1;
@@ -320,73 +299,75 @@
   transform: translate(-50%, 0);
 }
 
-/* A chegada só dispara quando a onda termina o percurso. */
+/* Só pulsa na chegada real da onda. */
 .hub-stage.flow-arrived .hub-stage-icon::after {
   content: "";
   position: absolute;
-  inset: -6px;
-  border: 1.25px solid color-mix(in srgb, var(--accent) 62%, #f0c27b);
-  border-radius: 24px;
+  inset: -7px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 26%, #f0c27b) 0 18%, transparent 68%);
   opacity: 0;
   pointer-events: none;
-  animation: hubTargetArrival .95s ease-out;
+  animation: hubTargetArrival 1s ease-out;
 }
 .hub-stage.flow-arrived .hub-stage-icon {
-  animation: hubArrivalGlow .7s ease-out;
+  animation: hubArrivalGlow .8s ease-out;
 }
+
 .hub-center {
   isolation: isolate;
 }
 .hub-center::after {
   content: "";
   position: absolute;
-  inset: -11px;
+  inset: -24px;
   z-index: -1;
-  border: 1px solid #efc67b1f;
+  border: 0;
   border-radius: 50%;
-  animation: hubCorePulse 4.8s ease-in-out infinite;
+  background: radial-gradient(circle, #efc67b12 0 16%, transparent 68%);
+  filter: blur(7px);
+  animation: hubCorePulse 5.2s ease-in-out infinite;
   pointer-events: none;
 }
 
-@keyframes hubWakeBreath {
-  0%,100% { stroke-opacity: .20; transform: scaleY(.9); }
-  50% { stroke-opacity: .58; transform: scaleY(1.08); }
+@keyframes hubWaterBreathe {
+  0%,100% { transform: scaleX(.94) scaleY(.90); opacity: .72; }
+  50% { transform: scaleX(1.04) scaleY(1.08); opacity: 1; }
 }
-@keyframes hubFinPulse {
-  0%,100% { fill-opacity: .62; }
-  50% { fill-opacity: .94; }
+@keyframes hubWaterGlint {
+  0%,100% { transform: scale(.86); opacity: .34; }
+  50% { transform: scale(1.12); opacity: .68; }
 }
 @keyframes hubTargetArrival {
-  0% { transform: scale(.78); opacity: 0; }
-  28% { opacity: .86; }
-  100% { transform: scale(1.28); opacity: 0; }
+  0% { transform: scale(.58); opacity: 0; }
+  30% { opacity: .72; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
 @keyframes hubArrivalGlow {
   0% { filter: brightness(1); }
-  40% { filter: brightness(1.22); }
+  38% { filter: brightness(1.18); }
   100% { filter: brightness(1); }
 }
 @keyframes hubCorePulse {
-  0%, 100% { transform: scale(.98); opacity: .10; }
-  50% { transform: scale(1.045); opacity: .28; }
+  0%,100% { transform: scale(.94); opacity: .20; }
+  50% { transform: scale(1.05); opacity: .42; }
 }
 @keyframes hubDotFloat {
-  0%,100% { transform: translate3d(0,0,0); opacity: .13; }
-  50% { transform: translate3d(0,-5px,0); opacity: .38; }
+  0%,100% { transform: translate3d(0,0,0); opacity: .11; }
+  50% { transform: translate3d(0,-4px,0); opacity: .32; }
 }
 
 @media (max-width: 760px) {
-  .hub-stage.auto-hover { transform: translate(-50%, -50%) scale(1.04); }
+  .hub-stage.auto-hover { transform: translate(-50%, -50%) scale(1.035); }
   .hub-stage.auto-hover .hub-tooltip { display: none; }
-  .hub-flow-bg::after { width: 620px; height: 350px; opacity: .42; }
-  .hub-flow-bg i { opacity: .22; }
-  .hub-orbit .hub-ray { stroke-opacity: .05; }
-  .hub-wake-crest.wake-wide { stroke-width: 1.9; }
+  .hub-flow-bg::after { width: 600px; height: 330px; opacity: .36; }
+  .hub-flow-bg i { opacity: .19; }
+  .hub-water-wake.wake-wide { fill-opacity: .08; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub-wake-crest,
-  .hub-wake-fin,
+  .hub-water-wake,
+  .hub-water-glint,
   .hub-stage.flow-arrived .hub-stage-icon::after,
   .hub-stage.flow-arrived .hub-stage-icon,
   .hub-center::after,
