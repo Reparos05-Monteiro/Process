@@ -11,6 +11,7 @@ Central visual de processos com login/cadastro na primeira tela, uma entrada em 
 - Administradores podem excluir casos. Editores não têm acesso às configurações.
 - A sessão é feita pelo Supabase Auth. Sem sessão, a página mostra somente o login/cadastro; uma conta ainda não aprovada mostra a tela de espera. As políticas RLS do banco protegem casos e alterações mesmo se alguém chamar a API diretamente.
 - O Supabase armazena tudo; não há casos fictícios, botão de restauração ou gravação de casos em `localStorage`.
+- No mapa, a barra lateral e o cabeçalho permanecem visíveis ao rolar a página. O fluxo pode ser percorrido arrastando com o mouse ou deslizando com o dedo; os cartões continuam abrindo seus casos ao clicar. A marca temporária mostra apenas a letra R.
 
 ## Arquivos
 
