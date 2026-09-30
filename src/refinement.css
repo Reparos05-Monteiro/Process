@@ -181,7 +181,7 @@
 .map-viewport:focus-visible { outline: 2px solid #f4c67d; outline-offset: -2px; }
 
 
-/* Tela inicial: etapas fixas, esteira de fluxo sem linhas e fundo futurista discreto. */
+/* Tela inicial: etapas fixas, onda em V sincronizada e fundo futurista discreto. */
 .hub-flow-bg {
   position: absolute;
   inset: 0;
@@ -215,10 +215,10 @@
   height: min(430px, 46vw);
   transform: translate(-50%, -50%);
   background:
-    radial-gradient(ellipse at center, #e6bb7310 0 6%, transparent 36%),
-    radial-gradient(ellipse at center, #7891a70a 0 34%, transparent 72%);
-  filter: blur(24px);
-  opacity: .72;
+    radial-gradient(ellipse at center, #e6bb730d 0 7%, transparent 38%),
+    radial-gradient(ellipse at center, #7891a708 0 34%, transparent 72%);
+  filter: blur(26px);
+  opacity: .62;
 }
 .hub-flow-bg i {
   position: absolute;
@@ -226,9 +226,9 @@
   height: 3px;
   border-radius: 50%;
   background: #a8bac8;
-  opacity: .18;
-  box-shadow: 0 0 8px #9fb2c34a;
-  animation: hubDotFloat 8s ease-in-out infinite;
+  opacity: .16;
+  box-shadow: 0 0 8px #9fb2c340;
+  animation: hubDotFloat 9s ease-in-out infinite;
 }
 .hub-flow-bg i:nth-child(1){left:13%;top:35%;animation-delay:-1.1s}
 .hub-flow-bg i:nth-child(2){left:25%;top:69%;animation-delay:-4.2s}
@@ -237,70 +237,73 @@
 .hub-flow-bg i:nth-child(5){left:78%;top:71%;animation-delay:-3.6s}
 .hub-flow-bg i:nth-child(6){left:89%;top:43%;animation-delay:-6.3s}
 
-/* Linhas do núcleo quase desaparecem; não funcionam como caminho do fluxo. */
 .hub-orbit .hub-ray {
   fill: none;
   stroke: #7d91a4;
-  stroke-opacity: .075;
-  stroke-width: .75;
+  stroke-opacity: .065;
+  stroke-width: .7;
   stroke-linecap: round;
-  stroke-dasharray: 1 11;
+  stroke-dasharray: 1 12;
   transition: stroke .25s, stroke-opacity .25s, filter .25s;
   vector-effect: non-scaling-stroke;
 }
 .hub-orbit .hub-ray.auto-active {
   stroke: #d9b979;
-  stroke-opacity: .14;
-  filter: drop-shadow(0 0 3px #e9c47c24);
+  stroke-opacity: .13;
+  filter: drop-shadow(0 0 3px #e9c47c20);
 }
 
-/* Caminho invisível: só a esteira curta aparece enquanto o fluxo passa. */
-.hub-orbit .hub-flow-wake,
-.hub-orbit .hub-flow-fin {
+/* O caminho existe só para guiar a onda; nunca é desenhado. */
+.hub-flow-motion-path {
   fill: none;
-  stroke-linecap: round;
-  stroke-dashoffset: 1;
-  vector-effect: non-scaling-stroke;
+  stroke: none;
+}
+
+/* Esteira em V: três cristas e uma ponta luminosa viajando juntas. */
+.hub-surface-wave {
   opacity: 0;
   pointer-events: none;
 }
-.hub-orbit .hub-flow-wake {
-  stroke: #aac0d0;
-  filter: drop-shadow(0 0 5px #9db4c45c);
-}
-.hub-orbit .hub-flow-wake.wake-back {
-  stroke-width: 5.2;
-  stroke-opacity: .18;
-  stroke-dasharray: .155 .845;
-}
-.hub-orbit .hub-flow-wake.wake-mid {
-  stroke-width: 3.1;
-  stroke-opacity: .34;
-  stroke-dasharray: .10 .90;
-}
-.hub-orbit .hub-flow-fin {
-  stroke: #f2c67e;
-  stroke-width: 2.2;
-  stroke-opacity: .92;
-  stroke-dasharray: .05 .95;
-  filter: drop-shadow(0 0 7px #f2c67e80);
-}
-.hub-orbit .hub-flow-wake.auto-active,
-.hub-orbit .hub-flow-fin.auto-active {
+.hub-surface-wave.running {
   opacity: 1;
 }
-.hub-orbit .hub-flow-wake.wake-back.auto-active {
-  animation: hubSeaWake 1.78s cubic-bezier(.2,.55,.2,1) forwards;
+.hub-wake-crest {
+  fill: none;
+  stroke: #a9bfce;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px #9eb5c55a);
 }
-.hub-orbit .hub-flow-wake.wake-mid.auto-active {
-  animation: hubSeaWake 1.62s cubic-bezier(.2,.55,.2,1) .08s forwards;
+.hub-wake-crest.wake-wide {
+  stroke-width: 2.2;
+  stroke-opacity: .18;
+  animation: hubWakeBreath 1.15s ease-in-out infinite;
 }
-.hub-orbit .hub-flow-fin.auto-active {
-  animation: hubSeaFin 1.48s cubic-bezier(.22,.58,.18,1) .14s forwards;
+.hub-wake-crest.wake-mid {
+  stroke-width: 2.1;
+  stroke-opacity: .34;
+  animation: hubWakeBreath 1.05s ease-in-out .12s infinite;
+}
+.hub-wake-crest.wake-near {
+  stroke: #c0d0db;
+  stroke-width: 1.9;
+  stroke-opacity: .55;
+  animation: hubWakeBreath .95s ease-in-out .2s infinite;
+}
+.hub-wake-fin {
+  fill: #f1c57c;
+  fill-opacity: .78;
+  stroke: #f5d6a0;
+  stroke-width: .8;
+  filter: drop-shadow(0 0 7px #f2c67e8a);
+  animation: hubFinPulse .9s ease-in-out infinite;
+}
+.hub-surface-wave.css-fallback {
+  offset-rotate: auto;
+  animation: none;
 }
 
 .hub-stage {
-  transition: transform .24s ease, filter .24s ease;
+  transition: transform .28s ease, filter .28s ease;
 }
 .hub-stage.auto-hover {
   transform: translate(-50%, -50%) scale(1.07);
@@ -316,15 +319,20 @@
   visibility: visible;
   transform: translate(-50%, 0);
 }
-.hub-stage.flow-target .hub-stage-icon::after {
+
+/* A chegada só dispara quando a onda termina o percurso. */
+.hub-stage.flow-arrived .hub-stage-icon::after {
   content: "";
   position: absolute;
-  inset: -5px;
-  border: 1px solid color-mix(in srgb, var(--accent) 58%, #f0c27b);
-  border-radius: 23px;
+  inset: -6px;
+  border: 1.25px solid color-mix(in srgb, var(--accent) 62%, #f0c27b);
+  border-radius: 24px;
   opacity: 0;
   pointer-events: none;
-  animation: hubTargetArrival 1.45s ease-out .36s;
+  animation: hubTargetArrival .95s ease-out;
+}
+.hub-stage.flow-arrived .hub-stage-icon {
+  animation: hubArrivalGlow .7s ease-out;
 }
 .hub-center {
   isolation: isolate;
@@ -336,48 +344,51 @@
   z-index: -1;
   border: 1px solid #efc67b1f;
   border-radius: 50%;
-  animation: hubCorePulse 4.5s ease-in-out infinite;
+  animation: hubCorePulse 4.8s ease-in-out infinite;
   pointer-events: none;
 }
 
-@keyframes hubSeaWake {
-  0% { stroke-dashoffset: 1; opacity: 0; }
-  10% { opacity: .55; }
-  74% { opacity: .42; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
+@keyframes hubWakeBreath {
+  0%,100% { stroke-opacity: .20; transform: scaleY(.9); }
+  50% { stroke-opacity: .58; transform: scaleY(1.08); }
 }
-@keyframes hubSeaFin {
-  0% { stroke-dashoffset: 1; opacity: 0; }
-  12% { opacity: .95; }
-  82% { opacity: .9; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
+@keyframes hubFinPulse {
+  0%,100% { fill-opacity: .62; }
+  50% { fill-opacity: .94; }
 }
 @keyframes hubTargetArrival {
-  0% { transform: scale(.82); opacity: 0; }
-  32% { opacity: .72; }
-  100% { transform: scale(1.22); opacity: 0; }
+  0% { transform: scale(.78); opacity: 0; }
+  28% { opacity: .86; }
+  100% { transform: scale(1.28); opacity: 0; }
+}
+@keyframes hubArrivalGlow {
+  0% { filter: brightness(1); }
+  40% { filter: brightness(1.22); }
+  100% { filter: brightness(1); }
 }
 @keyframes hubCorePulse {
   0%, 100% { transform: scale(.98); opacity: .10; }
   50% { transform: scale(1.045); opacity: .28; }
 }
 @keyframes hubDotFloat {
-  0%,100% { transform: translate3d(0,0,0); opacity: .14; }
-  50% { transform: translate3d(0,-6px,0); opacity: .42; }
+  0%,100% { transform: translate3d(0,0,0); opacity: .13; }
+  50% { transform: translate3d(0,-5px,0); opacity: .38; }
 }
 
 @media (max-width: 760px) {
   .hub-stage.auto-hover { transform: translate(-50%, -50%) scale(1.04); }
   .hub-stage.auto-hover .hub-tooltip { display: none; }
-  .hub-flow-bg::after { width: 620px; height: 350px; opacity: .48; }
-  .hub-flow-bg i { opacity: .24; }
-  .hub-orbit .hub-ray { stroke-opacity: .055; }
+  .hub-flow-bg::after { width: 620px; height: 350px; opacity: .42; }
+  .hub-flow-bg i { opacity: .22; }
+  .hub-orbit .hub-ray { stroke-opacity: .05; }
+  .hub-wake-crest.wake-wide { stroke-width: 1.9; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub-orbit .hub-flow-wake,
-  .hub-orbit .hub-flow-fin,
-  .hub-stage.flow-target .hub-stage-icon::after,
+  .hub-wake-crest,
+  .hub-wake-fin,
+  .hub-stage.flow-arrived .hub-stage-icon::after,
+  .hub-stage.flow-arrived .hub-stage-icon,
   .hub-center::after,
   .hub-flow-bg i {
     animation: none !important;
