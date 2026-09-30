@@ -250,24 +250,35 @@
   stroke-width: 1.35;
   filter: drop-shadow(0 0 4px #f4c67d55);
 }
-.hub-orbit .hub-wave {
+.hub-orbit .hub-sequence-line {
   fill: none;
-  stroke: #b8c8d7;
-  stroke-opacity: .52;
-  stroke-width: 2.2;
+  stroke: #71869a;
+  stroke-opacity: .23;
+  stroke-width: 1.15;
   stroke-linecap: round;
-  stroke-dasharray: .07 .93;
+  stroke-dasharray: 3 8;
+  vector-effect: non-scaling-stroke;
+  transition: stroke .25s, stroke-opacity .25s, filter .25s;
+}
+.hub-orbit .hub-sequence-line.auto-active {
+  stroke: #d9b777;
+  stroke-opacity: .72;
+  filter: drop-shadow(0 0 5px #efc47b55);
+}
+.hub-orbit .hub-sequence-wave {
+  fill: none;
+  stroke: #f4c67d;
+  stroke-opacity: 0;
+  stroke-width: 3.1;
+  stroke-linecap: round;
+  stroke-dasharray: .105 .895;
   stroke-dashoffset: 1;
   vector-effect: non-scaling-stroke;
-  animation: hubWaveFlow 2.45s linear infinite;
-  animation-delay: var(--wave-delay, 0s);
-  filter: drop-shadow(0 0 4px #9eb4c55c);
+  filter: drop-shadow(0 0 9px #f4c67dcc);
 }
-.hub-orbit .hub-wave.auto-active {
-  stroke: #f4c67d;
+.hub-orbit .hub-sequence-wave.auto-active {
   stroke-opacity: 1;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 8px #f4c67dbb);
+  animation: hubStageToStageFlow 1.65s cubic-bezier(.24,.58,.22,1) forwards;
 }
 .hub-stage {
   transition: transform .24s ease, filter .24s ease;
@@ -286,6 +297,16 @@
   visibility: visible;
   transform: translate(-50%, 0);
 }
+.hub-stage.flow-target .hub-stage-icon::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, #f4c67d);
+  border-radius: 24px;
+  opacity: 0;
+  pointer-events: none;
+  animation: hubTargetArrival 1.65s ease-out .3s;
+}
 .hub-center {
   isolation: isolate;
 }
@@ -300,9 +321,16 @@
   pointer-events: none;
 }
 
-@keyframes hubWaveFlow {
-  from { stroke-dashoffset: 1; }
-  to { stroke-dashoffset: 0; }
+@keyframes hubStageToStageFlow {
+  0% { stroke-dashoffset: 1; stroke-opacity: 0; }
+  12% { stroke-opacity: 1; }
+  88% { stroke-opacity: 1; }
+  100% { stroke-dashoffset: 0; stroke-opacity: 0; }
+}
+@keyframes hubTargetArrival {
+  0% { transform: scale(.72); opacity: 0; }
+  30% { opacity: .95; }
+  100% { transform: scale(1.32); opacity: 0; }
 }
 @keyframes hubCorePulse {
   0%, 100% { transform: scale(.96); opacity: .18; }
@@ -321,7 +349,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hub-orbit .hub-wave,
+  .hub-orbit .hub-sequence-wave,
+  .hub-stage.flow-target .hub-stage-icon::after,
   .hub-center::after,
   .hub-flow-bg i {
     animation: none !important;
