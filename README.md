@@ -83,3 +83,23 @@ Teste com a conta administradora: após o login, entre pela bolha central, veja 
 A produção usa o projeto Supabase `ProcessDATABASE`. O arquivo `src/public-config.js` contém somente a URL pública e a chave `sb_publishable_` destinada ao navegador; as políticas RLS continuam sendo a barreira de autorização. Variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` definidas na Vercel têm prioridade.
 
 O projeto Vercel oficial é `process`, ligado a `Reparos05-Monteiro/Process` na branch `main`. A configuração de Auth (cadastro por e-mail, confirmação de e-mail, Site URL e Redirect URLs) é feita no painel do Supabase. O primeiro administrador ainda precisa ser criado pelo fluxo de cadastro e vinculado uma única vez em `repair_members` conforme a seção de implantação acima.
+
+
+## Segurança e qualidade
+
+- As tabelas operacionais usam RLS no Supabase; etapas, configurações e casos só podem ser lidos por membros autenticados.
+- Aprovações de acesso usam a função transacional `repair_approve_access`, evitando estados parciais.
+- Edições de casos usam controle otimista por `updated_at` para impedir sobrescrita silenciosa de alterações concorrentes.
+- O banco garante o limite máximo de 12 etapas e possui índices para `created_by` e solicitações pendentes.
+- A Vercel envia CSP, proteção contra framing, `nosniff`, política de referência e `Permissions-Policy`.
+- O CI executa auditoria das dependências de produção, checagem de sintaxe, testes e build em pull requests e na `main`.
+- O Dependabot acompanha atualizações de npm e GitHub Actions.
+- Novas alterações de banco devem ser adicionadas em `supabase/migrations/` além de manter `supabase/schema.sql` atualizado.
+
+Para validar localmente:
+
+```bash
+npm ci
+npm run check
+npm run audit:prod
+```
