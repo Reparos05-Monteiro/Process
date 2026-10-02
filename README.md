@@ -88,7 +88,7 @@ O projeto Vercel oficial é `process`, ligado a `Reparos05-Monteiro/Process` na 
 ## Segurança e qualidade
 
 - As tabelas operacionais usam RLS no Supabase; etapas, configurações e casos só podem ser lidos por membros autenticados.
-- Aprovações de acesso usam a função transacional `repair_approve_access`, evitando estados parciais.
+- Aprovações de acesso são atômicas: o administrador insere o editor e um trigger interno remove o pedido pendente na mesma transação, sem RPC privilegiada exposta.
 - Edições de casos usam controle otimista por `updated_at` para impedir sobrescrita silenciosa de alterações concorrentes.
 - O banco garante o limite máximo de 12 etapas e possui índices para `created_by` e solicitações pendentes.
 - A Vercel envia CSP, proteção contra framing, `nosniff`, política de referência e `Permissions-Policy`.
