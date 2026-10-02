@@ -192,7 +192,7 @@ create policy repair_cases_delete_admin on public.repair_cases for delete to aut
 
 -- Aprovação atômica: evita membro criado com pedido pendente ou vice-versa.
 create or replace function public.repair_approve_access(p_user_id uuid)
-returns void language plpgsql security invoker set search_path = '' as $$
+returns void language plpgsql security definer set search_path = '' as $
 begin
   if not (select private.repair_is_admin()) then
     raise exception 'Somente o administrador pode liberar acessos.' using errcode = '42501';
