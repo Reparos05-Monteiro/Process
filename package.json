@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "node --check src/main.js && node --check src/model.js && node --check src/hub-layout.js && node --check src/hub-motion.js",
     "test": "node --test",
-    "check": "npm run lint && npm test && npm run build"
+    "check": "npm run lint && npm test && npm run build",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.116.0"
