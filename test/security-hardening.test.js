@@ -40,6 +40,7 @@ test('frontend usa aprovação atômica, trava otimista e debounce', async () =>
   assert.match(repository, /db\.rpc\('repair_approve_access'/);
   assert.match(repository, /\.eq\('updated_at', previousUpdatedAt\)/);
   assert.match(main, /setTimeout\(\(\) => \{[\s\S]*render\(\);[\s\S]*\}, 140\)/);
+  assert.doesNotMatch(main, /notify\((?:error|err)\.message/);
 });
 
 test('CSS legado do hub não volta a competir com o refinamento', async () => {
