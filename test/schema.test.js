@@ -34,7 +34,8 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
       ['Orçando', 'Análise', 'Enviado', 'Execução', 'Finalizado', 'Execução PR']);
 
     await db.exec('set role anon');
-    assert.equal((await db.query('select count(*)::integer as n from public.repair_stages')).rows[0].n, 6);
+    await assert.rejects(db.query('select * from public.repair_stages'), /permission denied|row-level security/);
+    await assert.rejects(db.query('select * from public.repair_settings'), /permission denied|row-level security/);
     await assert.rejects(db.query('select * from public.repair_cases'), /permission denied/);
     await db.exec('reset role');
 
@@ -48,6 +49,10 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${editor}', false);`);
     assert.equal((await db.query("update public.repair_settings set title='Indevido' where id=1 returning id")).rows.length, 0);
     await assert.rejects(db.query("insert into public.repair_stages(name,sort_order) values('Indevida',70)"), /row-level security/);
+    await assert.rejects(
+      db.query("insert into public.repair_members(user_id,role) values ($1,'editor')", [pending]),
+      /row-level security/
+    );
     const stageId = (await db.query("select id from public.repair_stages where name='Orçando'")).rows[0].id;
     await db.query(`insert into public.repair_cases (stage_id,title,address,owner)
       values ($1,'Reparo teste','Rua Um, 10','Editor')`, [stageId]);
@@ -57,14 +62,25 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`);
     assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 1);
     await db.query("insert into public.repair_members(user_id,role) values ($1,'editor')", [pending]);
-    await db.query('delete from public.repair_access_requests where user_id=$1', [pending]);
     assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 0);
+    await db.exec('reset role');
+    assert.equal((await db.query("select count(*)::integer as n from public.repair_members where user_id=$1 and role='editor'", [pending])).rows[0].n, 1);
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`);
     assert.equal((await db.query("update public.repair_settings set title='Central Nova' where id=1 returning id")).rows.length, 1);
     const ids = (await db.query('select id from public.repair_stages order by sort_order')).rows.map(r => r.id);
     const reversed = [...ids].reverse();
     await db.query('select public.repair_reorder_stages($1::uuid[])', [reversed]);
     assert.deepEqual((await db.query('select id from public.repair_stages order by sort_order')).rows.map(r => r.id), reversed);
     await assert.rejects(db.query('delete from public.repair_stages where id=$1', [stageId]), /foreign key constraint/);
+
+    for (let i = 7; i <= 12; i++) {
+      await db.query('insert into public.repair_stages(name,description,color,icon,sort_order) values($1,$2,$3,$4,$5)',
+        [`Etapa ${i}`, '', '#abcdef', '□', i * 10]);
+    }
+    await assert.rejects(
+      db.query("insert into public.repair_stages(name,description,color,icon,sort_order) values('Etapa 13','','#abcdef','□',130)"),
+      /no máximo 12 etapas/
+    );
   } finally {
     await db.close();
   }

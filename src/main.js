@@ -4,6 +4,7 @@ import './refinement.css';
 import { mountHubMotion } from './hub-motion.js';
 import { hubStagePositions } from './hub-layout.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './public-config.js';
+import { createRepairRepository, requireData } from './repair-repository.js';
 import {
   DEFAULT_SETTINGS, PRIORITIES, ICONS, escapeHTML as e, safeColor,
   orderedStages, casesForStage, daysSince, caseCode, reorderIds,
@@ -16,12 +17,17 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABL
 function validEndpoint(value) {
   try {
     const parsed = new URL(value);
-    return !parsed.username && !parsed.password && !parsed.pathname.replaceAll('/', '') &&
-      (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && parsed.hostname === 'localhost'));
+    const cloud = parsed.protocol === 'https:' && parsed.hostname.endsWith('.supabase.co');
+    const local = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    return !parsed.username && !parsed.password && !parsed.pathname.replaceAll('/', '') && (cloud || local);
   } catch { return false; }
 }
-const configured = validEndpoint(url) && !!key && !key.includes('SUA_CHAVE');
+function validPublishableKey(value) {
+  return /^sb_publishable_[A-Za-z0-9_-]+$/.test(String(value ?? ''));
+}
+const configured = validEndpoint(url) && validPublishableKey(key);
 const db = configured ? createClient(url, key) : null;
+const repository = db ? createRepairRepository(db) : null;
 const state = {
   loading: true, error: '', user: null, member: null, stages: [], cases: [],
   settings: DEFAULT_SETTINGS, view: 'hub', panel: null, stageId: null,
@@ -31,6 +37,8 @@ let noticeTimer;
 let authSubscription;
 let loginInProgress = false;
 let composingSearch = false;
+let searchTimer;
+let panelReturnFocus = null;
 let disposeHubMotion = () => {};
 let hubMotionFrame = 0;
 
@@ -43,46 +51,49 @@ const localToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const formatDate = date => date ? new Intl.DateTimeFormat('pt-BR', {
+const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC',
-}).format(new Date(`${date}T12:00:00Z`)) : '—';
+});
+const formatDate = date => date ? dateFormatter.format(new Date(`${date}T12:00:00Z`)) : '—';
 function notify(message, isError = false) {
   clearTimeout(noticeTimer);
   notice.textContent = message;
   notice.className = `visible${isError ? ' error' : ''}`;
   noticeTimer = setTimeout(() => { notice.className = ''; }, 5500);
 }
-function requireData(result) {
-  if (result.error) throw result.error;
-  return result.data;
+function friendlyError(error, fallback = 'Não foi possível concluir a operação.') {
+  const message = String(error?.message ?? '');
+  const safeMessages = [
+    'Este caso foi alterado por outra pessoa.',
+    'Não foi possível validar a versão atual do caso.',
+    'O sistema aceita no máximo 12 etapas.',
+    'Solicitação de acesso não encontrada.',
+  ];
+  if (safeMessages.some(prefix => message.startsWith(prefix))) return message;
+  if (/invalid login credentials/i.test(message)) return 'E-mail ou senha inválidos.';
+  if (/email not confirmed/i.test(message)) return 'Confirme seu e-mail antes de entrar.';
+  if (/user already registered/i.test(message)) return 'Já existe uma conta com este e-mail.';
+  if (/permission denied|row-level security|42501/i.test(message)) return 'Você não tem permissão para realizar esta operação.';
+  if (/failed to fetch|network|load failed/i.test(message)) return 'Não foi possível conectar ao servidor. Tente novamente.';
+  return fallback;
 }
-
+function notifyError(error, fallback) {
+  console.error(error);
+  notify(friendlyError(error, fallback), true);
+}
 async function loadPublic() {
-  const [stages, settings] = await Promise.all([
-    db.from('repair_stages').select('id,name,description,color,icon,sort_order').order('sort_order'),
-    db.from('repair_settings').select('title,stale_days,visible_cards').eq('id', 1).single(),
-  ]);
-  state.stages = orderedStages(requireData(stages));
-  state.settings = requireData(settings);
+  const { stages, settings } = await repository.getPublic();
+  state.stages = orderedStages(stages);
+  state.settings = settings;
   document.title = state.settings.title;
 }
 
 async function loadCases() {
-  const rows = [];
-  const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    const page = requireData(await db.from('repair_cases')
-      .select('id,stage_id,title,address,owner,priority,description,note,opened_on,updated_at')
-      .order('id', { ascending: true }).range(from, from + pageSize - 1));
-    rows.push(...page);
-    if (page.length < pageSize) break;
-  }
-  state.cases = rows;
+  state.cases = await repository.getCases();
 }
 
 async function loadRequests() {
-  state.requests = admin() ? requireData(await db.from('repair_access_requests')
-    .select('user_id,email,requested_at').order('requested_at', { ascending: false })) : [];
+  state.requests = admin() ? await repository.getAccessRequests() : [];
 }
 
 async function hydrateAuth() {
@@ -92,14 +103,12 @@ async function hydrateAuth() {
   state.member = null;
   state.cases = [];
   if (!state.user) return;
-  const membership = requireData(await db.from('repair_members')
-    .select('role').eq('user_id', state.user.id).maybeSingle());
+  const membership = await repository.getMembership(state.user.id);
   state.member = membership;
   if (membership) {
     await Promise.all([loadCases(), loadRequests()]);
   } else {
-    const request = await db.from('repair_access_requests').insert({ user_id: state.user.id, email: state.user.email });
-    if (request.error && request.error.code !== '23505') throw request.error;
+    await repository.requestAccess(state.user.id, state.user.email);
   }
 }
 
@@ -110,7 +119,8 @@ async function initialize() {
     if (state.member) await loadPublic();
     state.error = '';
   } catch (error) {
-    state.error = `Não foi possível carregar o sistema: ${error.message}`;
+    console.error(error);
+    state.error = friendlyError(error, 'Não foi possível carregar o sistema. Tente novamente.');
   } finally {
     state.loading = false;
     render();
@@ -126,7 +136,7 @@ async function initialize() {
     if (event === 'SIGNED_IN' && !state.user && !loginInProgress) {
       setTimeout(async () => {
         try { await hydrateAuth(); if (state.member) await loadPublic(); render(); }
-        catch (err) { notify(err.message, true); }
+        catch (err) { notifyError(err); }
       }, 0);
     }
   }).data.subscription;
@@ -137,7 +147,7 @@ function render() {
   disposeHubMotion();
   disposeHubMotion = () => {};
   if (!configured) {
-    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
+    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e uma <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> válida na Vercel. Chaves secretas são rejeitadas no navegador. Consulte o README do projeto.</p></div></main>`;
     return;
   }
   if (state.loading) { app.innerHTML = '<main class="centered"><p>Carregando o mapa de reparos…</p></main>'; return; }
@@ -148,6 +158,11 @@ function render() {
   if (!state.user) { app.innerHTML = renderAuth(); return; }
   if (!state.member) { app.innerHTML = renderPending(); return; }
   app.innerHTML = (state.view === 'hub' ? renderHub() : renderBoard()) + renderPanel();
+  if (state.panel) {
+    const background = app.querySelector('.shell');
+    background?.setAttribute('inert', '');
+    background?.setAttribute('aria-hidden', 'true');
+  }
   if (state.view === 'hub') hubMotionFrame = requestAnimationFrame(() => {
     disposeHubMotion = mountHubMotion(document.querySelector('.hub-orbit'));
   });
@@ -181,6 +196,8 @@ function stageIcon(symbol) {
 
 function renderHub() {
   const positions = hubStagePositions(state.stages.length);
+  const counts = new Map(state.stages.map(item => [item.id, 0]));
+  state.cases.forEach(row => counts.set(row.stage_id, (counts.get(row.stage_id) || 0) + 1));
 
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
     <div class="hub-orbit ${state.stages.length === 1 ? 'hub-single' : ''}" aria-label="Etapas do processo">
@@ -190,7 +207,7 @@ function renderHub() {
         ${positions.map((_, index) => `<g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-water-wake wake-wide" d="M-47 0 C-41 -10 -32 -14 -23 -11 C-16 -9 -12 -5 -7 -3 C-19 -7 -32 -5 -38 0 C-32 5 -19 7 -7 3 C-12 5 -16 9 -23 11 C-32 14 -41 10 -47 0Z"/><path class="hub-water-wake wake-mid" d="M-33 0 C-28 -7 -21 -10 -15 -8 C-11 -6 -8 -4 -5 -2 C-14 -5 -22 -3 -26 0 C-22 3 -14 5 -5 2 C-8 4 -11 6 -15 8 C-21 10 -28 7 -33 0Z"/><path class="hub-water-wake wake-near" d="M-19 0 C-15 -5 -11 -7 -7 -5 C-5 -4 -3 -2 -2 -1 C-7 -3 -12 -2 -14 0 C-12 2 -7 3 -2 1 C-3 2 -5 4 -7 5 C-11 7 -15 5 -19 0Z"/><ellipse class="hub-water-glint" cx="-2" cy="0" rx="3.7" ry="2.2"/><animateMotion data-flow-motion="${index}" dur="4.8s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
-      ${state.stages.map((item, index) => { const { x, y } = positions[index]; return `<button class="hub-stage ${x < 20 ? 'hub-edge-left' : x > 80 ? 'hub-edge-right' : ''}" data-hub-stage="${index}" style="--hub-x:${x}%;--hub-y:${y}%;--hub-phase:-${index * 580}ms;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos. ${e(item.description)}"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${e(item.description || 'Abrir etapa do processo')}</small></span></button>`; }).join('')}
+      ${state.stages.map((item, index) => { const { x, y } = positions[index]; return `<button class="hub-stage ${x < 20 ? 'hub-edge-left' : x > 80 ? 'hub-edge-right' : ''}" data-hub-stage="${index}" style="--hub-x:${x}%;--hub-y:${y}%;--hub-phase:-${index * 580}ms;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${(counts.get(item.id) || 0)} casos. ${e(item.description)}"><span class="hub-stage-icon">${stageIcon(item.icon)}${(counts.get(item.id) || 0) ? `<b>${(counts.get(item.id) || 0)}</b>` : ''}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${e(item.description || 'Abrir etapa do processo')}</small></span></button>`; }).join('')}
     </div></main>`;
 }
 
@@ -198,6 +215,8 @@ function renderBoard() {
   const n = state.stages.length;
   const width = Math.max(760, n * 230 + 50);
   const visible = casesForStage(state.cases, null, state.query, state.sort);
+  const byStage = new Map(state.stages.map(item => [item.id, []]));
+  visible.forEach(row => byStage.get(row.stage_id)?.push(row));
   const aged = state.cases.filter(item => daysSince(item.opened_on) >= state.settings.stale_days).length;
   return `<div class="shell"><aside class="sidebar" aria-label="Navegação"><button class="sidebar-brand" data-action="home" aria-label="Início">R</button><div class="side-links"><button class="side-button" data-action="home" title="Início" aria-label="Início">⌂</button><button class="side-button selected" data-action="all" title="Todos os casos" aria-label="Todos os casos">▦</button>${admin() ? '<button class="side-button" data-action="settings" title="Configurações" aria-label="Configurações">⚙</button>' : ''}</div><button class="side-button bottom" data-action="logout" title="Sair" aria-label="Sair">⇥</button></aside>
     <div class="workspace"><header class="topbar"><span>REPAROS <i>/</i> SISTEMA COMPLETO</span><div class="topbar-actions"><span>${admin() ? 'ADMINISTRADOR' : 'EQUIPE'} <i>·</i> ${e(state.user.email)}</span><button class="text-button" data-action="refresh" title="Atualizar dados">Atualizar ↻</button></div></header>
@@ -205,17 +224,16 @@ function renderBoard() {
       <div class="toolbar"><div class="stat"><strong>${state.cases.length}</strong><span>casos no sistema</span></div><div class="stat"><strong>${aged}</strong><span>há ${state.settings.stale_days}+ dias</span></div><div class="stat"><strong>${n}</strong><span>etapas do fluxo</span></div><label class="search">⌕ <input id="search" type="search" value="${e(state.query)}" placeholder="Buscar caso, endereço ou responsável" aria-label="Buscar casos"></label></div>
       <section class="board"><div class="board-heading"><div><span class="eyebrow">VISÃO DO FLUXO</span><h2>Onde cada caso está agora</h2></div><button class="text-button" data-action="all">Ver todos os casos →</button></div>
         <div class="map-viewport" role="region" aria-label="Mapa de etapas, arraste horizontalmente para explorar" tabindex="0"><div class="map-canvas" style="width:${width}px"><svg class="connection-layer" width="${width}" height="690" viewBox="0 0 ${width} 690" aria-hidden="true">${state.stages.slice(0, -1).map((_, i) => `<path class="spine-line" d="M${130 + i * 230} 343 L${360 + i * 230} 343"/>`).join('')}${state.stages.map((item, i) => {
-          const stageCases = visible.filter(c => c.stage_id === item.id);
+          const stageCases = byStage.get(item.id) || [];
           const center = 130 + i * 230;
           return `<path class="thread" stroke="${safeColor(item.color)}" d="M${center} 282 L${center} 202" style="opacity:${stageCases.length ? 1 : .25}"/><path class="thread" stroke="${safeColor(item.color)}" d="M${center} 405 L${center} 492" style="opacity:${stageCases.length > 1 ? 1 : .25}"/>`;
-        }).join('')}</svg>${state.stages.map((item, index) => renderMapStage(item, index, visible)).join('')}
+        }).join('')}</svg>${state.stages.map((item, index) => renderMapStage(item, index, byStage.get(item.id) || [])).join('')}
         ${!state.cases.length ? '<div class="map-message">Nenhum caso cadastrado ainda.<small>Crie o primeiro caso para iniciar o fluxo.</small></div>' : !visible.length ? '<div class="map-message">Nenhum caso corresponde à busca.</div>' : ''}</div></div>
         <div class="board-footer">As linhas ligam os cartões à etapa atual. <span>DESLIZE PARA EXPLORAR →</span></div></section>
       <div class="flow-footer">${state.stages.map((item, index) => `<span><b>${String(index + 1).padStart(2, '0')}</b> ${e(item.name)}</span>`).join('<i>→</i>')}</div></main></div></div>`;
 }
 
-function renderMapStage(item, index, visible) {
-  const list = casesForStage(visible, item.id, '', state.sort);
+function renderMapStage(item, index, list) {
   const x = 36 + index * 230;
   const note = (row, position) => `<button class="floating-note ${position}" style="left:${x + (position === 'lower' ? 14 : 0)}px;${style(item)}" data-action="case" data-id="${row.id}"><span class="note-code">${caseCode(row.id)} <i>●</i></span><strong>${e(row.title)}</strong><small>${e(row.address)}</small><span class="note-age">Há ${daysSince(row.opened_on)} dia(s) <b>↗</b></span></button>`;
   return `${list[0] && state.settings.visible_cards > 0 ? note(list[0], 'upper') : ''}${list[1] && state.settings.visible_cards > 1 ? note(list[1], 'lower') : ''}
@@ -266,7 +284,19 @@ function renderPanel() {
   return `<div class="scrim" data-action="close"></div><aside class="panel" role="dialog" aria-modal="true" aria-label="${e(title)}"><div class="panel-top"><span>REPAROS / ${e(title.toUpperCase())}</span><button data-action="close" aria-label="Fechar painel">×</button></div><div class="panel-content"><h2>${e(title)}</h2>${content}</div></aside>`;
 }
 
-function openPanel(type) { state.panel = type; render(); document.querySelector('.panel input, .panel button')?.focus(); }
+function openPanel(type) {
+  if (!state.panel) panelReturnFocus = document.activeElement?.focus ? document.activeElement : null;
+  state.panel = type;
+  render();
+  requestAnimationFrame(() => document.querySelector('.panel input, .panel select, .panel textarea, .panel button')?.focus());
+}
+function closePanel() {
+  state.panel = null;
+  render();
+  const target = panelReturnFocus;
+  panelReturnFocus = null;
+  requestAnimationFrame(() => target?.isConnected && target.focus?.());
+}
 function gateTo(destination, id = null) {
   state.view = 'board'; state.stageId = id;
   if (destination === 'stage') openPanel('stage'); else { state.panel = null; render(); }
@@ -276,7 +306,7 @@ async function write(form, task, success) {
   if (submit?.disabled) return;
   if (submit) submit.disabled = true;
   try { await task(); await success(); }
-  catch (error) { notify(error.message || 'Não foi possível salvar.', true); if (submit) submit.disabled = false; }
+  catch (error) { notifyError(error, 'Não foi possível salvar.'); if (submit) submit.disabled = false; }
 }
 async function refresh() { await loadPublic(); if (state.member) await Promise.all([loadCases(), loadRequests()]); render(); }
 function caseValues(form, includeNote = false) {
@@ -305,52 +335,50 @@ document.addEventListener('click', async event => {
   if (action === 'check-access') {
     button.disabled = true;
     try { await hydrateAuth(); if (state.member) await loadPublic(); render(); if (!state.member) notify('Seu acesso ainda está pendente.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'approve-request' && admin()) {
     button.disabled = true;
     try {
-      const added = await db.from('repair_members').insert({ user_id: id, role: 'editor' });
-      if (added.error && added.error.code !== '23505') throw added.error;
-      requireData(await db.from('repair_access_requests').delete().eq('user_id', id));
+      await repository.approveAccess(id);
       await loadRequests(); render(); notify('Acesso de editor liberado.');
-    } catch (error) { button.disabled = false; notify(error.message, true); }
+    } catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'refresh') {
     button.disabled = true;
     try { await refresh(); notify('Dados atualizados.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'enter') gateTo('board');
   if (action === 'open-stage') gateTo('stage', id);
   if (action === 'home') { state.view = 'hub'; state.panel = null; state.query = ''; render(); }
   if (action === 'all') { state.stageId = null; openPanel('all'); }
   if (action === 'case') { state.caseId = id; openPanel('detail'); }
-  if (action === 'close') { state.panel = null; render(); }
+  if (action === 'close') closePanel();
   if (action === 'new-case') { state.stageId = id || state.stageId || state.stages[0]?.id; openPanel('new'); }
   if (action === 'settings' && admin()) openPanel('settings');
   if (action === 'add-stage' && admin()) { state.stageId = null; openPanel('stage-form'); }
   if (action === 'edit-stage' && admin()) { state.stageId = id; openPanel('stage-form'); }
-  if (action === 'logout') { const { error } = await db.auth.signOut(); if (error) notify(error.message, true); }
+  if (action === 'logout') { const { error } = await db.auth.signOut(); if (error) notifyError(error, 'Não foi possível sair da conta.'); }
   if ((action === 'move-up' || action === 'move-down') && admin()) {
     button.disabled = true;
     try {
-      requireData(await db.rpc('repair_reorder_stages', { p_ids: reorderIds(state.stages, id, action === 'move-up' ? -1 : 1) }));
+      await repository.reorderStages(reorderIds(state.stages, id, action === 'move-up' ? -1 : 1));
       await refresh(); notify('Ordem das etapas atualizada.');
-    } catch (error) { button.disabled = false; notify(error.message, true); }
+    } catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'delete-stage' && admin()) {
     if (count(id)) { notify('Mova os casos desta etapa antes de excluí-la.', true); return; }
     if (state.stages.length <= 1 || !window.confirm('Excluir esta etapa?')) return;
     button.disabled = true;
-    try { requireData(await db.from('repair_stages').delete().eq('id', id)); state.panel = 'settings'; await refresh(); notify('Etapa excluída.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    try { await repository.deleteStage(id); state.panel = 'settings'; await refresh(); notify('Etapa excluída.'); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'delete-case' && admin()) {
     if (!window.confirm(`Excluir o caso ${caseCode(id)} permanentemente?`)) return;
     button.disabled = true;
-    try { requireData(await db.from('repair_cases').delete().eq('id', id)); state.panel = 'all'; await refresh(); notify('Caso excluído.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    try { await repository.deleteCase(id); state.panel = 'all'; await refresh(); notify('Caso excluído.'); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
 });
 
@@ -403,9 +431,13 @@ document.addEventListener('input', event => {
   if (event.target.id !== 'search' || composingSearch) return;
   state.query = event.target.value;
   const position = event.target.selectionStart;
-  render();
-  const next = document.querySelector('#search'); next?.focus();
-  try { next?.setSelectionRange(position, position); } catch { /* Alguns navegadores não aceitam seleção em search. */ }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    render();
+    const next = document.querySelector('#search');
+    next?.focus();
+    try { next?.setSelectionRange(position, position); } catch { /* Alguns navegadores não aceitam seleção em search. */ }
+  }, 140);
 });
 document.addEventListener('compositionstart', event => { if (event.target.id === 'search') composingSearch = true; });
 document.addEventListener('compositionend', event => {
@@ -415,7 +447,29 @@ document.addEventListener('change', event => {
   if (event.target.id === 'sort') { state.sort = event.target.value; render(); }
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && state.panel) { state.panel = null; render(); }
+  if (event.key === 'Escape' && state.panel) {
+    event.preventDefault();
+    closePanel();
+    return;
+  }
+  if (event.key !== 'Tab' || !state.panel) return;
+  const panel = document.querySelector('.panel');
+  if (!panel) return;
+  const focusable = [...panel.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  )].filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable.at(-1);
+  if (!panel.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 document.addEventListener('submit', async event => {
   const form = event.target;
@@ -451,31 +505,41 @@ document.addEventListener('submit', async event => {
     }, async () => render());
   }
   if (form.id === 'case-create') {
-    let payload; try { payload = caseValues(form); } catch (error) { notify(error.message, true); return; }
+    let payload; try { payload = caseValues(form); } catch { notify('Revise os campos do caso.', true); return; }
     await write(form, async () => {
-      const created = requireData(await db.from('repair_cases').insert(payload).select('id,stage_id').single());
+      const created = await repository.createCase(payload);
       state.caseId = created.id; state.stageId = created.stage_id;
     }, async () => { state.panel = 'detail'; await refresh(); notify('Caso criado.'); });
   }
   if (form.id === 'case-update') {
-    let payload; try { payload = caseValues(form, true); } catch (error) { notify(error.message, true); return; }
-    await write(form, async () => { requireData(await db.from('repair_cases').update(payload).eq('id', state.caseId).select('id').single()); },
-      async () => { state.stageId = payload.stage_id; await refresh(); notify('Caso atualizado.'); });
+    let payload; try { payload = caseValues(form, true); } catch { notify('Revise os campos do caso.', true); return; }
+    const original = state.cases.find(item => String(item.id) === String(state.caseId));
+    await write(form, async () => {
+      if (!original?.updated_at) throw new Error('Não foi possível validar a versão atual do caso.');
+      const updated = await repository.updateCase(state.caseId, original.updated_at, payload);
+      if (!updated) {
+        await refresh();
+        throw new Error('Este caso foi alterado por outra pessoa. Os dados foram recarregados; revise antes de salvar novamente.');
+      }
+    }, async () => { state.stageId = payload.stage_id; await refresh(); notify('Caso atualizado.'); });
   }
   if (form.id === 'stage-form' && admin()) {
     const data = new FormData(form);
     const payload = { name: String(data.get('name')).trim(), description: String(data.get('description')).trim(), color: String(data.get('color')), icon: String(data.get('icon')) };
     if (!payload.name || !ICONS.includes(payload.icon)) { notify('Revise os campos da etapa.', true); return; }
     await write(form, async () => {
-      if (state.stageId) requireData(await db.from('repair_stages').update(payload).eq('id', state.stageId).select('id').single());
-      else requireData(await db.from('repair_stages').insert({ ...payload, sort_order: Math.max(0, ...state.stages.map(s => s.sort_order)) + 10 }).select('id').single());
+      await repository.saveStage(
+        state.stageId,
+        payload,
+        Math.max(0, ...state.stages.map(s => s.sort_order)) + 10
+      );
     }, async () => { state.panel = 'settings'; await refresh(); notify('Etapa salva.'); });
   }
   if (form.id === 'settings-form' && admin()) {
     const data = new FormData(form);
     const payload = { title: String(data.get('title')).trim(), stale_days: Number(data.get('stale_days')), visible_cards: Number(data.get('visible_cards')) };
     if (!payload.title || payload.stale_days < 1 || payload.stale_days > 365 || ![0, 1, 2].includes(payload.visible_cards)) { notify('Revise as preferências.', true); return; }
-    await write(form, async () => { requireData(await db.from('repair_settings').update(payload).eq('id', 1).select('id').single()); },
+    await write(form, async () => { await repository.saveSettings(payload); },
       async () => { await refresh(); notify('Preferências atualizadas.'); });
   }
 });
