@@ -166,6 +166,8 @@ function stageIcon(symbol) {
 
 function renderHub() {
   const positions = hubStagePositions(state.stages.length);
+  const counts = new Map(state.stages.map(item => [item.id, 0]));
+  state.cases.forEach(row => counts.set(row.stage_id, (counts.get(row.stage_id) || 0) + 1));
 
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
     <div class="hub-orbit ${state.stages.length === 1 ? 'hub-single' : ''}" aria-label="Etapas do processo">
@@ -175,7 +177,7 @@ function renderHub() {
         ${positions.map((_, index) => `<g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-water-wake wake-wide" d="M-47 0 C-41 -10 -32 -14 -23 -11 C-16 -9 -12 -5 -7 -3 C-19 -7 -32 -5 -38 0 C-32 5 -19 7 -7 3 C-12 5 -16 9 -23 11 C-32 14 -41 10 -47 0Z"/><path class="hub-water-wake wake-mid" d="M-33 0 C-28 -7 -21 -10 -15 -8 C-11 -6 -8 -4 -5 -2 C-14 -5 -22 -3 -26 0 C-22 3 -14 5 -5 2 C-8 4 -11 6 -15 8 C-21 10 -28 7 -33 0Z"/><path class="hub-water-wake wake-near" d="M-19 0 C-15 -5 -11 -7 -7 -5 C-5 -4 -3 -2 -2 -1 C-7 -3 -12 -2 -14 0 C-12 2 -7 3 -2 1 C-3 2 -5 4 -7 5 C-11 7 -15 5 -19 0Z"/><ellipse class="hub-water-glint" cx="-2" cy="0" rx="3.7" ry="2.2"/><animateMotion data-flow-motion="${index}" dur="4.8s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
-      ${state.stages.map((item, index) => { const { x, y } = positions[index]; return `<button class="hub-stage ${x < 20 ? 'hub-edge-left' : x > 80 ? 'hub-edge-right' : ''}" data-hub-stage="${index}" style="--hub-x:${x}%;--hub-y:${y}%;--hub-phase:-${index * 580}ms;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos. ${e(item.description)}"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${e(item.description || 'Abrir etapa do processo')}</small></span></button>`; }).join('')}
+      ${state.stages.map((item, index) => { const { x, y } = positions[index]; return `<button class="hub-stage ${x < 20 ? 'hub-edge-left' : x > 80 ? 'hub-edge-right' : ''}" data-hub-stage="${index}" style="--hub-x:${x}%;--hub-y:${y}%;--hub-phase:-${index * 580}ms;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${(counts.get(item.id) || 0)} casos. ${e(item.description)}"><span class="hub-stage-icon">${stageIcon(item.icon)}${(counts.get(item.id) || 0) ? `<b>${(counts.get(item.id) || 0)}</b>` : ''}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${e(item.description || 'Abrir etapa do processo')}</small></span></button>`; }).join('')}
     </div></main>`;
 }
 
