@@ -271,7 +271,7 @@ function renderPanel() {
 }
 
 function openPanel(type) {
-  panelReturnFocus = document.activeElement?.focus ? document.activeElement : panelReturnFocus;
+  if (!state.panel) panelReturnFocus = document.activeElement?.focus ? document.activeElement : null;
   state.panel = type;
   render();
   requestAnimationFrame(() => document.querySelector('.panel input, .panel select, .panel textarea, .panel button')?.focus());
@@ -415,11 +415,10 @@ document.addEventListener('click', event => {
 
 document.addEventListener('input', event => {
   if (event.target.id !== 'search' || composingSearch) return;
-  const value = event.target.value;
+  state.query = event.target.value;
   const position = event.target.selectionStart;
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    state.query = value;
     render();
     const next = document.querySelector('#search');
     next?.focus();
@@ -447,7 +446,10 @@ document.addEventListener('keydown', event => {
   )].filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
   if (!focusable.length) return;
   const first = focusable[0], last = focusable.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
+  if (!panel.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && document.activeElement === last) {
