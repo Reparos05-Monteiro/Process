@@ -17,8 +17,9 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABL
 function validEndpoint(value) {
   try {
     const parsed = new URL(value);
-    return !parsed.username && !parsed.password && !parsed.pathname.replaceAll('/', '') &&
-      (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && parsed.hostname === 'localhost'));
+    const cloud = parsed.protocol === 'https:' && parsed.hostname.endsWith('.supabase.co');
+    const local = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    return !parsed.username && !parsed.password && !parsed.pathname.replaceAll('/', '') && (cloud || local);
   } catch { return false; }
 }
 function validPublishableKey(value) {
@@ -157,6 +158,11 @@ function render() {
   if (!state.user) { app.innerHTML = renderAuth(); return; }
   if (!state.member) { app.innerHTML = renderPending(); return; }
   app.innerHTML = (state.view === 'hub' ? renderHub() : renderBoard()) + renderPanel();
+  if (state.panel) {
+    const background = app.querySelector('.shell');
+    background?.setAttribute('inert', '');
+    background?.setAttribute('aria-hidden', 'true');
+  }
   if (state.view === 'hub') hubMotionFrame = requestAnimationFrame(() => {
     disposeHubMotion = mountHubMotion(document.querySelector('.hub-orbit'));
   });
