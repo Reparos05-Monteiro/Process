@@ -49,6 +49,10 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${editor}', false);`);
     assert.equal((await db.query("update public.repair_settings set title='Indevido' where id=1 returning id")).rows.length, 0);
     await assert.rejects(db.query("insert into public.repair_stages(name,sort_order) values('Indevida',70)"), /row-level security/);
+    await assert.rejects(
+      db.query(`select public.repair_approve_access('${pending}'::uuid)`),
+      /Somente o administrador/
+    );
     const stageId = (await db.query("select id from public.repair_stages where name='Orçando'")).rows[0].id;
     await db.query(`insert into public.repair_cases (stage_id,title,address,owner)
       values ($1,'Reparo teste','Rua Um, 10','Editor')`, [stageId]);
