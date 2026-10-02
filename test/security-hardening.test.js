@@ -27,7 +27,8 @@ test('schema exige autenticação para dados operacionais e inclui hardening', a
   assert.doesNotMatch(schema, /repair_stages for select to anon/);
   assert.doesNotMatch(schema, /repair_settings for select to anon/);
   assert.match(schema, /private\.repair_is_member/);
-  assert.match(schema, /repair_approve_access/);
+  assert.match(schema, /repair_members_clear_request/);
+  assert.doesNotMatch(schema, /security definer[^]*repair_approve_access/i);
   assert.match(schema, /repair_stages_limit/);
   assert.match(schema, /repair_cases_created_by_idx/);
 });
