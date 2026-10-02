@@ -31,11 +31,13 @@ test('schema exige autenticação para dados operacionais e inclui hardening', a
   assert.match(schema, /repair_cases_created_by_idx/);
 });
 
-test('frontend usa aprovação atômica e trava otimista na edição', async () => {
+test('frontend usa aprovação atômica, trava otimista e debounce', async () => {
   const main = await read('src/main.js');
-  assert.match(main, /db\.rpc\('repair_approve_access'/);
-  assert.match(main, /\.eq\('updated_at', original\.updated_at\)/);
-  assert.match(main, /setTimeout\(\(\) => \{[\s\S]*state\.query = value;[\s\S]*\}, 140\)/);
+  const repository = await read('src/repair-repository.js');
+  assert.match(main, /repository\.approveAccess\(id\)/);
+  assert.match(repository, /db\.rpc\('repair_approve_access'/);
+  assert.match(repository, /\.eq\('updated_at', previousUpdatedAt\)/);
+  assert.match(main, /setTimeout\(\(\) => \{[\s\S]*render\(\);[\s\S]*\}, 140\)/);
 });
 
 test('CSS legado do hub não volta a competir com o refinamento', async () => {
