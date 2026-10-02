@@ -4,6 +4,7 @@ import './refinement.css';
 import { mountHubMotion } from './hub-motion.js';
 import { hubStagePositions } from './hub-layout.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './public-config.js';
+import { createRepairRepository, requireData } from './repair-repository.js';
 import {
   DEFAULT_SETTINGS, PRIORITIES, ICONS, escapeHTML as e, safeColor,
   orderedStages, casesForStage, daysSince, caseCode, reorderIds,
@@ -22,6 +23,7 @@ function validEndpoint(value) {
 }
 const configured = validEndpoint(url) && !!key && !key.includes('SUA_CHAVE');
 const db = configured ? createClient(url, key) : null;
+const repository = db ? createRepairRepository(db) : null;
 const state = {
   loading: true, error: '', user: null, member: null, stages: [], cases: [],
   settings: DEFAULT_SETTINGS, view: 'hub', panel: null, stageId: null,
@@ -55,37 +57,19 @@ function notify(message, isError = false) {
   notice.className = `visible${isError ? ' error' : ''}`;
   noticeTimer = setTimeout(() => { notice.className = ''; }, 5500);
 }
-function requireData(result) {
-  if (result.error) throw result.error;
-  return result.data;
-}
-
 async function loadPublic() {
-  const [stages, settings] = await Promise.all([
-    db.from('repair_stages').select('id,name,description,color,icon,sort_order').order('sort_order'),
-    db.from('repair_settings').select('title,stale_days,visible_cards').eq('id', 1).single(),
-  ]);
-  state.stages = orderedStages(requireData(stages));
-  state.settings = requireData(settings);
+  const { stages, settings } = await repository.getPublic();
+  state.stages = orderedStages(stages);
+  state.settings = settings;
   document.title = state.settings.title;
 }
 
 async function loadCases() {
-  const rows = [];
-  const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    const page = requireData(await db.from('repair_cases')
-      .select('id,stage_id,title,address,owner,priority,description,note,opened_on,updated_at')
-      .order('id', { ascending: true }).range(from, from + pageSize - 1));
-    rows.push(...page);
-    if (page.length < pageSize) break;
-  }
-  state.cases = rows;
+  state.cases = await repository.getCases();
 }
 
 async function loadRequests() {
-  state.requests = admin() ? requireData(await db.from('repair_access_requests')
-    .select('user_id,email,requested_at').order('requested_at', { ascending: false })) : [];
+  state.requests = admin() ? await repository.getAccessRequests() : [];
 }
 
 async function hydrateAuth() {
@@ -95,14 +79,12 @@ async function hydrateAuth() {
   state.member = null;
   state.cases = [];
   if (!state.user) return;
-  const membership = requireData(await db.from('repair_members')
-    .select('role').eq('user_id', state.user.id).maybeSingle());
+  const membership = await repository.getMembership(state.user.id);
   state.member = membership;
   if (membership) {
     await Promise.all([loadCases(), loadRequests()]);
   } else {
-    const request = await db.from('repair_access_requests').insert({ user_id: state.user.id, email: state.user.email });
-    if (request.error && request.error.code !== '23505') throw request.error;
+    await repository.requestAccess(state.user.id, state.user.email);
   }
 }
 
@@ -326,7 +308,7 @@ document.addEventListener('click', async event => {
   if (action === 'approve-request' && admin()) {
     button.disabled = true;
     try {
-      requireData(await db.rpc('repair_approve_access', { p_user_id: id }));
+      await repository.approveAccess(id);
       await loadRequests(); render(); notify('Acesso de editor liberado.');
     } catch (error) { button.disabled = false; notify(error.message, true); }
   }
@@ -349,7 +331,7 @@ document.addEventListener('click', async event => {
   if ((action === 'move-up' || action === 'move-down') && admin()) {
     button.disabled = true;
     try {
-      requireData(await db.rpc('repair_reorder_stages', { p_ids: reorderIds(state.stages, id, action === 'move-up' ? -1 : 1) }));
+      await repository.reorderStages(reorderIds(state.stages, id, action === 'move-up' ? -1 : 1));
       await refresh(); notify('Ordem das etapas atualizada.');
     } catch (error) { button.disabled = false; notify(error.message, true); }
   }
@@ -357,13 +339,13 @@ document.addEventListener('click', async event => {
     if (count(id)) { notify('Mova os casos desta etapa antes de excluí-la.', true); return; }
     if (state.stages.length <= 1 || !window.confirm('Excluir esta etapa?')) return;
     button.disabled = true;
-    try { requireData(await db.from('repair_stages').delete().eq('id', id)); state.panel = 'settings'; await refresh(); notify('Etapa excluída.'); }
+    try { await repository.deleteStage(id); state.panel = 'settings'; await refresh(); notify('Etapa excluída.'); }
     catch (error) { button.disabled = false; notify(error.message, true); }
   }
   if (action === 'delete-case' && admin()) {
     if (!window.confirm(`Excluir o caso ${caseCode(id)} permanentemente?`)) return;
     button.disabled = true;
-    try { requireData(await db.from('repair_cases').delete().eq('id', id)); state.panel = 'all'; await refresh(); notify('Caso excluído.'); }
+    try { await repository.deleteCase(id); state.panel = 'all'; await refresh(); notify('Caso excluído.'); }
     catch (error) { button.disabled = false; notify(error.message, true); }
   }
 });
@@ -493,7 +475,7 @@ document.addEventListener('submit', async event => {
   if (form.id === 'case-create') {
     let payload; try { payload = caseValues(form); } catch (error) { notify(error.message, true); return; }
     await write(form, async () => {
-      const created = requireData(await db.from('repair_cases').insert(payload).select('id,stage_id').single());
+      const created = await repository.createCase(payload);
       state.caseId = created.id; state.stageId = created.stage_id;
     }, async () => { state.panel = 'detail'; await refresh(); notify('Caso criado.'); });
   }
@@ -502,10 +484,7 @@ document.addEventListener('submit', async event => {
     const original = state.cases.find(item => String(item.id) === String(state.caseId));
     await write(form, async () => {
       if (!original?.updated_at) throw new Error('Não foi possível validar a versão atual do caso.');
-      const result = await db.from('repair_cases').update(payload)
-        .eq('id', state.caseId).eq('updated_at', original.updated_at)
-        .select('id,updated_at').maybeSingle();
-      const updated = requireData(result);
+      const updated = await repository.updateCase(state.caseId, original.updated_at, payload);
       if (!updated) {
         await refresh();
         throw new Error('Este caso foi alterado por outra pessoa. Os dados foram recarregados; revise antes de salvar novamente.');
@@ -517,15 +496,18 @@ document.addEventListener('submit', async event => {
     const payload = { name: String(data.get('name')).trim(), description: String(data.get('description')).trim(), color: String(data.get('color')), icon: String(data.get('icon')) };
     if (!payload.name || !ICONS.includes(payload.icon)) { notify('Revise os campos da etapa.', true); return; }
     await write(form, async () => {
-      if (state.stageId) requireData(await db.from('repair_stages').update(payload).eq('id', state.stageId).select('id').single());
-      else requireData(await db.from('repair_stages').insert({ ...payload, sort_order: Math.max(0, ...state.stages.map(s => s.sort_order)) + 10 }).select('id').single());
+      await repository.saveStage(
+        state.stageId,
+        payload,
+        Math.max(0, ...state.stages.map(s => s.sort_order)) + 10
+      );
     }, async () => { state.panel = 'settings'; await refresh(); notify('Etapa salva.'); });
   }
   if (form.id === 'settings-form' && admin()) {
     const data = new FormData(form);
     const payload = { title: String(data.get('title')).trim(), stale_days: Number(data.get('stale_days')), visible_cards: Number(data.get('visible_cards')) };
     if (!payload.title || payload.stale_days < 1 || payload.stale_days > 365 || ![0, 1, 2].includes(payload.visible_cards)) { notify('Revise as preferências.', true); return; }
-    await write(form, async () => { requireData(await db.from('repair_settings').update(payload).eq('id', 1).select('id').single()); },
+    await write(form, async () => { await repository.saveSettings(payload); },
       async () => { await refresh(); notify('Preferências atualizadas.'); });
   }
 });
