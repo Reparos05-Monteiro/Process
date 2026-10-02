@@ -19,16 +19,25 @@ create table if not exists public.repair_access_requests (
 -- Somente uma função interna consulta a própria tabela de membros ao aprovar.
 -- O schema private não deve ser incluído nos schemas expostos pela Data API.
 create schema if not exists private;
+create or replace function private.repair_is_member()
+returns boolean language sql stable security definer set search_path = '' as $
+  select (select auth.uid()) is not null and exists (
+    select 1 from public.repair_members
+    where user_id = (select auth.uid())
+  );
+$;
+
 create or replace function private.repair_is_admin()
-returns boolean language sql stable security definer set search_path = '' as $$
+returns boolean language sql stable security definer set search_path = '' as $
   select (select auth.uid()) is not null and exists (
     select 1 from public.repair_members
     where user_id = (select auth.uid()) and role = 'admin'
   );
-$$;
+$;
+revoke all on function private.repair_is_member() from public, anon, authenticated;
 revoke all on function private.repair_is_admin() from public, anon, authenticated;
 grant usage on schema private to authenticated;
-grant execute on function private.repair_is_admin() to authenticated;
+grant execute on function private.repair_is_member(), private.repair_is_admin() to authenticated;
 
 create table if not exists public.repair_stages (
   id uuid primary key default gen_random_uuid(),
@@ -64,6 +73,8 @@ create table if not exists public.repair_cases (
   updated_at timestamptz not null default now()
 );
 create index if not exists repair_cases_stage_opened_idx on public.repair_cases (stage_id, opened_on, id);
+create index if not exists repair_cases_created_by_idx on public.repair_cases (created_by);
+create index if not exists repair_access_requests_requested_idx on public.repair_access_requests (requested_at desc);
 
 -- updated_at pertence ao banco; o cliente não tem permissão para alterá-lo.
 create or replace function public.repair_touch_updated_at()
@@ -115,7 +126,7 @@ revoke all on public.repair_members, public.repair_access_requests, public.repai
 grant select on public.repair_members to authenticated;
 grant insert on public.repair_members to authenticated;
 grant select, insert, delete on public.repair_access_requests to authenticated;
-grant select on public.repair_stages, public.repair_settings to anon, authenticated;
+grant select on public.repair_stages, public.repair_settings to authenticated;
 grant insert, delete on public.repair_stages to authenticated;
 grant update (name, description, color, icon, sort_order) on public.repair_stages to authenticated;
 grant update (title, stale_days, visible_cards) on public.repair_settings to authenticated;
@@ -134,60 +145,85 @@ create policy repair_members_add_editor on public.repair_members for insert to a
 
 drop policy if exists repair_access_requests_read on public.repair_access_requests;
 create policy repair_access_requests_read on public.repair_access_requests for select to authenticated
-  using (user_id = (select auth.uid()) or exists (
-    select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'
-  ));
+  using (user_id = (select auth.uid()) or (select private.repair_is_admin()));
 drop policy if exists repair_access_requests_create on public.repair_access_requests;
 create policy repair_access_requests_create on public.repair_access_requests for insert to authenticated
   with check (user_id = (select auth.uid())
     and lower(email) = lower(coalesce((select auth.jwt())->>'email', '')));
 drop policy if exists repair_access_requests_delete_admin on public.repair_access_requests;
 create policy repair_access_requests_delete_admin on public.repair_access_requests for delete to authenticated
-  using (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  using ((select private.repair_is_admin()));
 
 drop policy if exists repair_stages_read on public.repair_stages;
-create policy repair_stages_read on public.repair_stages for select to anon, authenticated using (true);
+create policy repair_stages_read on public.repair_stages for select to authenticated
+  using ((select private.repair_is_member()));
 drop policy if exists repair_stages_insert_admin on public.repair_stages;
 create policy repair_stages_insert_admin on public.repair_stages for insert to authenticated
-  with check (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  with check ((select private.repair_is_admin()));
 drop policy if exists repair_stages_update_admin on public.repair_stages;
 create policy repair_stages_update_admin on public.repair_stages for update to authenticated
-  using (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'))
-  with check (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  using ((select private.repair_is_admin()))
+  with check ((select private.repair_is_admin()));
 drop policy if exists repair_stages_delete_admin on public.repair_stages;
 create policy repair_stages_delete_admin on public.repair_stages for delete to authenticated
-  using (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  using ((select private.repair_is_admin()));
 
 drop policy if exists repair_settings_read on public.repair_settings;
-create policy repair_settings_read on public.repair_settings for select to anon, authenticated using (true);
+create policy repair_settings_read on public.repair_settings for select to authenticated
+  using ((select private.repair_is_member()));
 drop policy if exists repair_settings_update_admin on public.repair_settings;
 create policy repair_settings_update_admin on public.repair_settings for update to authenticated
-  using (id = 1 and exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'))
-  with check (id = 1 and exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  using (id = 1 and (select private.repair_is_admin()))
+  with check (id = 1 and (select private.repair_is_admin()));
 
 drop policy if exists repair_cases_read_member on public.repair_cases;
 create policy repair_cases_read_member on public.repair_cases for select to authenticated
-  using (exists (select 1 from public.repair_members m where m.user_id = (select auth.uid())));
+  using ((select private.repair_is_member()));
 drop policy if exists repair_cases_insert_member on public.repair_cases;
 create policy repair_cases_insert_member on public.repair_cases for insert to authenticated
-  with check (created_by = (select auth.uid()) and exists
-    (select 1 from public.repair_members m where m.user_id = (select auth.uid())));
+  with check (created_by = (select auth.uid()) and (select private.repair_is_member()));
 drop policy if exists repair_cases_update_member on public.repair_cases;
 create policy repair_cases_update_member on public.repair_cases for update to authenticated
-  using (exists (select 1 from public.repair_members m where m.user_id = (select auth.uid())))
-  with check (exists (select 1 from public.repair_members m where m.user_id = (select auth.uid())));
+  using ((select private.repair_is_member()))
+  with check ((select private.repair_is_member()));
 drop policy if exists repair_cases_delete_admin on public.repair_cases;
 create policy repair_cases_delete_admin on public.repair_cases for delete to authenticated
-  using (exists (select 1 from public.repair_members m
-    where m.user_id = (select auth.uid()) and m.role = 'admin'));
+  using ((select private.repair_is_admin()));
+
+-- Aprovação atômica: evita membro criado com pedido pendente ou vice-versa.
+create or replace function public.repair_approve_access(p_user_id uuid)
+returns void language plpgsql security invoker set search_path = '' as $
+begin
+  if not (select private.repair_is_admin()) then
+    raise exception 'Somente o administrador pode liberar acessos.' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.repair_access_requests where user_id = p_user_id) then
+    raise exception 'Solicitação de acesso não encontrada.';
+  end if;
+  insert into public.repair_members (user_id, role)
+  values (p_user_id, 'editor')
+  on conflict (user_id) do nothing;
+  delete from public.repair_access_requests where user_id = p_user_id;
+end;
+$;
+revoke all on function public.repair_approve_access(uuid) from public, anon;
+grant execute on function public.repair_approve_access(uuid) to authenticated;
+
+-- O banco garante o mesmo limite de etapas suportado pela interface.
+create or replace function public.repair_enforce_stage_limit()
+returns trigger language plpgsql security invoker set search_path = '' as $
+begin
+  perform pg_advisory_xact_lock(hashtext('repair_stages_limit'));
+  if (select count(*) from public.repair_stages) >= 12 then
+    raise exception 'O sistema aceita no máximo 12 etapas.';
+  end if;
+  return new;
+end;
+$;
+revoke all on function public.repair_enforce_stage_limit() from public, anon, authenticated;
+drop trigger if exists repair_stages_limit on public.repair_stages;
+create trigger repair_stages_limit before insert on public.repair_stages
+  for each row execute function public.repair_enforce_stage_limit();
 
 -- Somente seis etapas iniciais. Nenhum caso fictício é inserido.
 insert into public.repair_settings (id, title, stale_days, visible_cards)
