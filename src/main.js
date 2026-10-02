@@ -45,9 +45,10 @@ const localToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const formatDate = date => date ? new Intl.DateTimeFormat('pt-BR', {
+const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC',
-}).format(new Date(`${date}T12:00:00Z`)) : '—';
+});
+const formatDate = date => date ? dateFormatter.format(new Date(`${date}T12:00:00Z`)) : '—';
 function notify(message, isError = false) {
   clearTimeout(noticeTimer);
   notice.textContent = message;
@@ -200,6 +201,8 @@ function renderBoard() {
   const n = state.stages.length;
   const width = Math.max(760, n * 230 + 50);
   const visible = casesForStage(state.cases, null, state.query, state.sort);
+  const byStage = new Map(state.stages.map(item => [item.id, []]));
+  visible.forEach(row => byStage.get(row.stage_id)?.push(row));
   const aged = state.cases.filter(item => daysSince(item.opened_on) >= state.settings.stale_days).length;
   return `<div class="shell"><aside class="sidebar" aria-label="Navegação"><button class="sidebar-brand" data-action="home" aria-label="Início">R</button><div class="side-links"><button class="side-button" data-action="home" title="Início" aria-label="Início">⌂</button><button class="side-button selected" data-action="all" title="Todos os casos" aria-label="Todos os casos">▦</button>${admin() ? '<button class="side-button" data-action="settings" title="Configurações" aria-label="Configurações">⚙</button>' : ''}</div><button class="side-button bottom" data-action="logout" title="Sair" aria-label="Sair">⇥</button></aside>
     <div class="workspace"><header class="topbar"><span>REPAROS <i>/</i> SISTEMA COMPLETO</span><div class="topbar-actions"><span>${admin() ? 'ADMINISTRADOR' : 'EQUIPE'} <i>·</i> ${e(state.user.email)}</span><button class="text-button" data-action="refresh" title="Atualizar dados">Atualizar ↻</button></div></header>
@@ -207,17 +210,16 @@ function renderBoard() {
       <div class="toolbar"><div class="stat"><strong>${state.cases.length}</strong><span>casos no sistema</span></div><div class="stat"><strong>${aged}</strong><span>há ${state.settings.stale_days}+ dias</span></div><div class="stat"><strong>${n}</strong><span>etapas do fluxo</span></div><label class="search">⌕ <input id="search" type="search" value="${e(state.query)}" placeholder="Buscar caso, endereço ou responsável" aria-label="Buscar casos"></label></div>
       <section class="board"><div class="board-heading"><div><span class="eyebrow">VISÃO DO FLUXO</span><h2>Onde cada caso está agora</h2></div><button class="text-button" data-action="all">Ver todos os casos →</button></div>
         <div class="map-viewport" role="region" aria-label="Mapa de etapas, arraste horizontalmente para explorar" tabindex="0"><div class="map-canvas" style="width:${width}px"><svg class="connection-layer" width="${width}" height="690" viewBox="0 0 ${width} 690" aria-hidden="true">${state.stages.slice(0, -1).map((_, i) => `<path class="spine-line" d="M${130 + i * 230} 343 L${360 + i * 230} 343"/>`).join('')}${state.stages.map((item, i) => {
-          const stageCases = visible.filter(c => c.stage_id === item.id);
+          const stageCases = byStage.get(item.id) || [];
           const center = 130 + i * 230;
           return `<path class="thread" stroke="${safeColor(item.color)}" d="M${center} 282 L${center} 202" style="opacity:${stageCases.length ? 1 : .25}"/><path class="thread" stroke="${safeColor(item.color)}" d="M${center} 405 L${center} 492" style="opacity:${stageCases.length > 1 ? 1 : .25}"/>`;
-        }).join('')}</svg>${state.stages.map((item, index) => renderMapStage(item, index, visible)).join('')}
+        }).join('')}</svg>${state.stages.map((item, index) => renderMapStage(item, index, byStage.get(item.id) || [])).join('')}
         ${!state.cases.length ? '<div class="map-message">Nenhum caso cadastrado ainda.<small>Crie o primeiro caso para iniciar o fluxo.</small></div>' : !visible.length ? '<div class="map-message">Nenhum caso corresponde à busca.</div>' : ''}</div></div>
         <div class="board-footer">As linhas ligam os cartões à etapa atual. <span>DESLIZE PARA EXPLORAR →</span></div></section>
       <div class="flow-footer">${state.stages.map((item, index) => `<span><b>${String(index + 1).padStart(2, '0')}</b> ${e(item.name)}</span>`).join('<i>→</i>')}</div></main></div></div>`;
 }
 
-function renderMapStage(item, index, visible) {
-  const list = casesForStage(visible, item.id, '', state.sort);
+function renderMapStage(item, index, list) {
   const x = 36 + index * 230;
   const note = (row, position) => `<button class="floating-note ${position}" style="left:${x + (position === 'lower' ? 14 : 0)}px;${style(item)}" data-action="case" data-id="${row.id}"><span class="note-code">${caseCode(row.id)} <i>●</i></span><strong>${e(row.title)}</strong><small>${e(row.address)}</small><span class="note-age">Há ${daysSince(row.opened_on)} dia(s) <b>↗</b></span></button>`;
   return `${list[0] && state.settings.visible_cards > 0 ? note(list[0], 'upper') : ''}${list[1] && state.settings.visible_cards > 1 ? note(list[1], 'lower') : ''}
