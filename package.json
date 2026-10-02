@@ -13,10 +13,10 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.116.0"
+    "@supabase/supabase-js": "2.117.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.14",
+    "@electric-sql/pglite": "0.5.8",
     "vite": "8.3.1"
   }
 }
