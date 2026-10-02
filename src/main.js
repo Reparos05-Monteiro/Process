@@ -31,6 +31,8 @@ let noticeTimer;
 let authSubscription;
 let loginInProgress = false;
 let composingSearch = false;
+let searchTimer;
+let panelReturnFocus = null;
 let disposeHubMotion = () => {};
 let hubMotionFrame = 0;
 
@@ -266,7 +268,19 @@ function renderPanel() {
   return `<div class="scrim" data-action="close"></div><aside class="panel" role="dialog" aria-modal="true" aria-label="${e(title)}"><div class="panel-top"><span>REPAROS / ${e(title.toUpperCase())}</span><button data-action="close" aria-label="Fechar painel">×</button></div><div class="panel-content"><h2>${e(title)}</h2>${content}</div></aside>`;
 }
 
-function openPanel(type) { state.panel = type; render(); document.querySelector('.panel input, .panel button')?.focus(); }
+function openPanel(type) {
+  panelReturnFocus = document.activeElement?.focus ? document.activeElement : panelReturnFocus;
+  state.panel = type;
+  render();
+  requestAnimationFrame(() => document.querySelector('.panel input, .panel select, .panel textarea, .panel button')?.focus());
+}
+function closePanel() {
+  state.panel = null;
+  render();
+  const target = panelReturnFocus;
+  panelReturnFocus = null;
+  requestAnimationFrame(() => target?.isConnected && target.focus?.());
+}
 function gateTo(destination, id = null) {
   state.view = 'board'; state.stageId = id;
   if (destination === 'stage') openPanel('stage'); else { state.panel = null; render(); }
@@ -310,9 +324,7 @@ document.addEventListener('click', async event => {
   if (action === 'approve-request' && admin()) {
     button.disabled = true;
     try {
-      const added = await db.from('repair_members').insert({ user_id: id, role: 'editor' });
-      if (added.error && added.error.code !== '23505') throw added.error;
-      requireData(await db.from('repair_access_requests').delete().eq('user_id', id));
+      requireData(await db.rpc('repair_approve_access', { p_user_id: id }));
       await loadRequests(); render(); notify('Acesso de editor liberado.');
     } catch (error) { button.disabled = false; notify(error.message, true); }
   }
@@ -326,7 +338,7 @@ document.addEventListener('click', async event => {
   if (action === 'home') { state.view = 'hub'; state.panel = null; state.query = ''; render(); }
   if (action === 'all') { state.stageId = null; openPanel('all'); }
   if (action === 'case') { state.caseId = id; openPanel('detail'); }
-  if (action === 'close') { state.panel = null; render(); }
+  if (action === 'close') closePanel();
   if (action === 'new-case') { state.stageId = id || state.stageId || state.stages[0]?.id; openPanel('new'); }
   if (action === 'settings' && admin()) openPanel('settings');
   if (action === 'add-stage' && admin()) { state.stageId = null; openPanel('stage-form'); }
@@ -401,11 +413,16 @@ document.addEventListener('click', event => {
 
 document.addEventListener('input', event => {
   if (event.target.id !== 'search' || composingSearch) return;
-  state.query = event.target.value;
+  const value = event.target.value;
   const position = event.target.selectionStart;
-  render();
-  const next = document.querySelector('#search'); next?.focus();
-  try { next?.setSelectionRange(position, position); } catch { /* Alguns navegadores não aceitam seleção em search. */ }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    state.query = value;
+    render();
+    const next = document.querySelector('#search');
+    next?.focus();
+    try { next?.setSelectionRange(position, position); } catch { /* Alguns navegadores não aceitam seleção em search. */ }
+  }, 140);
 });
 document.addEventListener('compositionstart', event => { if (event.target.id === 'search') composingSearch = true; });
 document.addEventListener('compositionend', event => {
@@ -415,7 +432,26 @@ document.addEventListener('change', event => {
   if (event.target.id === 'sort') { state.sort = event.target.value; render(); }
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && state.panel) { state.panel = null; render(); }
+  if (event.key === 'Escape' && state.panel) {
+    event.preventDefault();
+    closePanel();
+    return;
+  }
+  if (event.key !== 'Tab' || !state.panel) return;
+  const panel = document.querySelector('.panel');
+  if (!panel) return;
+  const focusable = [...panel.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  )].filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 document.addEventListener('submit', async event => {
   const form = event.target;
@@ -459,8 +495,18 @@ document.addEventListener('submit', async event => {
   }
   if (form.id === 'case-update') {
     let payload; try { payload = caseValues(form, true); } catch (error) { notify(error.message, true); return; }
-    await write(form, async () => { requireData(await db.from('repair_cases').update(payload).eq('id', state.caseId).select('id').single()); },
-      async () => { state.stageId = payload.stage_id; await refresh(); notify('Caso atualizado.'); });
+    const original = state.cases.find(item => String(item.id) === String(state.caseId));
+    await write(form, async () => {
+      if (!original?.updated_at) throw new Error('Não foi possível validar a versão atual do caso.');
+      const result = await db.from('repair_cases').update(payload)
+        .eq('id', state.caseId).eq('updated_at', original.updated_at)
+        .select('id,updated_at').maybeSingle();
+      const updated = requireData(result);
+      if (!updated) {
+        await refresh();
+        throw new Error('Este caso foi alterado por outra pessoa. Os dados foram recarregados; revise antes de salvar novamente.');
+      }
+    }, async () => { state.stageId = payload.stage_id; await refresh(); notify('Caso atualizado.'); });
   }
   if (form.id === 'stage-form' && admin()) {
     const data = new FormData(form);
