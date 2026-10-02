@@ -2,19 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRepairRepository } from '../src/repair-repository.js';
 
-test('aprovação de acesso usa RPC transacional', async () => {
+test('aprovação de acesso insere apenas editor e deixa a atomicidade para o trigger', async () => {
   const calls = [];
   const db = {
-    rpc: async (name, args) => {
-      calls.push({ name, args });
-      return { data: null, error: null };
+    from(table) {
+      assert.equal(table, 'repair_members');
+      return {
+        async insert(payload) {
+          calls.push(payload);
+          return { data: null, error: null };
+        },
+      };
     },
   };
   const repository = createRepairRepository(db);
   await repository.approveAccess('00000000-0000-4000-8000-000000000010');
   assert.deepEqual(calls, [{
-    name: 'repair_approve_access',
-    args: { p_user_id: '00000000-0000-4000-8000-000000000010' },
+    user_id: '00000000-0000-4000-8000-000000000010',
+    role: 'editor',
   }]);
 });
 
@@ -46,7 +51,7 @@ test('edição usa updated_at como trava otimista', async () => {
 
 test('resultado com erro do Supabase é propagado', async () => {
   const db = {
-    rpc: async () => ({ data: null, error: new Error('falha') }),
+    from: () => ({ insert: async () => ({ data: null, error: new Error('falha') }) }),
   };
   const repository = createRepairRepository(db);
   await assert.rejects(repository.approveAccess('x'), /falha/);
