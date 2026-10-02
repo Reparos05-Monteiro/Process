@@ -18,11 +18,11 @@ Central visual de processos com login/cadastro na primeira tela, uma entrada em 
 
 | Arquivo | Função |
 | --- | --- |
-| `index.html`, `src/main.js`, `src/model.js`, `src/hub-layout.js`, `src/hub-motion.js`, `src/style.css`, `src/refinement.css` | Interface, autenticação, layout do hub e lógica do sistema |
+| `index.html`, `src/main.js`, `src/model.js`, `src/repair-repository.js`, `src/hub-layout.js`, `src/hub-motion.js`, `src/style.css`, `src/refinement.css` | Interface, autenticação, regras de apresentação, acesso ao Supabase e lógica do hub |
 | `supabase/schema.sql` | Tabelas, seis etapas iniciais, pedidos de acesso, permissões RLS e função de reordenação |
 | `package.json`, `package-lock.json` | Dependências fixadas e scripts |
 | `.env.example` | Nomes das duas variáveis públicas necessárias |
-| `test/model.test.js`, `test/schema.test.js`, `test/auth-flow.test.js`, `test/hub-layout.test.js`, `test/hub-motion.test.js` | Testes de lógica, SQL/RLS, autenticação, layout e sincronização do hub |
+| `test/*.test.js` | Testes de lógica, SQL/RLS, autenticação, repositório de dados, segurança, layout e sincronização do hub |
 | `PREVIA_LOGIN.png`, `PREVIA_CADASTRO.png`, `PREVIA_ENTRADA.png` | Ilustrações das três telas; a aparência final deve ser conferida no navegador após o deploy |
 | `INSTRUCOES_PARA_PUBLICAR.md` | Roteiro completo para o outro chat |
 | `RESUMO_DA_ATUALIZACAO.md` | Mudanças deste pacote e testes executados |
