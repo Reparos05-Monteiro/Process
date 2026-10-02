@@ -11,17 +11,18 @@ Central visual de processos com login/cadastro na primeira tela, uma entrada em 
 - Administradores podem excluir casos. Editores não têm acesso às configurações.
 - A sessão é feita pelo Supabase Auth. Sem sessão, a página mostra somente o login/cadastro; uma conta ainda não aprovada mostra a tela de espera. As políticas RLS do banco protegem casos e alterações mesmo se alguém chamar a API diretamente.
 - O Supabase armazena tudo; não há casos fictícios, botão de restauração ou gravação de casos em `localStorage`.
-- No mapa, a barra lateral e o cabeçalho permanecem visíveis ao rolar a página. O fluxo pode ser percorrido arrastando com o mouse ou deslizando com o dedo; os cartões continuam abrindo seus casos ao clicar. A marca temporária mostra apenas a letra R.\n- Na tela inicial autenticada, não existem linhas visíveis entre o REPAROS e as etapas nem entre uma etapa e outra. O fluxo é mostrado somente por uma pequena massa translúcida de água, com três camadas preenchidas e suaves, que leva 4,6 segundos para viajar até a próxima etapa; o destino só é ativado quando essa onda chega.
+- No mapa, a barra lateral e o cabeçalho permanecem visíveis ao rolar a página. O fluxo pode ser percorrido arrastando com o mouse ou deslizando com o dedo; os cartões continuam abrindo seus casos ao clicar. A marca temporária mostra apenas a letra R.
+- Na tela inicial autenticada, as etapas ficam fixas em uma composição irregular ao redor do núcleo. Não existem linhas visíveis de conexão. Uma onda suave e translúcida percorre um caminho invisível entre as etapas em 4,8 s por trecho; o próximo passo é destacado exatamente no `endEvent` da própria animação, sem pausa artificial. O fundo usa apenas gradientes escuros e pontos discretos.
 
 ## Arquivos
 
 | Arquivo | Função |
 | --- | --- |
-| `index.html`, `src/main.js`, `src/model.js`, `src/style.css`, `src/refinement.css` | Interface, autenticação e lógica do sistema |
+| `index.html`, `src/main.js`, `src/model.js`, `src/hub-layout.js`, `src/hub-motion.js`, `src/style.css`, `src/refinement.css` | Interface, autenticação, layout do hub e lógica do sistema |
 | `supabase/schema.sql` | Tabelas, seis etapas iniciais, pedidos de acesso, permissões RLS e função de reordenação |
 | `package.json`, `package-lock.json` | Dependências fixadas e scripts |
 | `.env.example` | Nomes das duas variáveis públicas necessárias |
-| `test/model.test.js`, `test/schema.test.js`, `test/auth-flow.test.js` | Testes de lógica, SQL/RLS em PostgreSQL local e transições de autenticação simuladas |
+| `test/model.test.js`, `test/schema.test.js`, `test/auth-flow.test.js`, `test/hub-layout.test.js`, `test/hub-motion.test.js` | Testes de lógica, SQL/RLS, autenticação, layout e sincronização do hub |
 | `PREVIA_LOGIN.png`, `PREVIA_CADASTRO.png`, `PREVIA_ENTRADA.png` | Ilustrações das três telas; a aparência final deve ser conferida no navegador após o deploy |
 | `INSTRUCOES_PARA_PUBLICAR.md` | Roteiro completo para o outro chat |
 | `RESUMO_DA_ATUALIZACAO.md` | Mudanças deste pacote e testes executados |

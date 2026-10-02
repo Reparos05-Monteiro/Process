@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import './style.css';
 import './refinement.css';
+import { mountHubMotion } from './hub-motion.js';
+import { hubStagePositions } from './hub-layout.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './public-config.js';
 import {
   DEFAULT_SETTINGS, PRIORITIES, ICONS, escapeHTML as e, safeColor,
@@ -29,8 +31,8 @@ let noticeTimer;
 let authSubscription;
 let loginInProgress = false;
 let composingSearch = false;
-let hubMotionTimer = 0;
-let hubMotionRun = 0;
+let disposeHubMotion = () => {};
+let hubMotionFrame = 0;
 
 const admin = () => state.member?.role === 'admin';
 const stage = id => state.stages.find(item => item.id === id);
@@ -131,7 +133,9 @@ async function initialize() {
 }
 
 function render() {
-  stopHubMotion();
+  cancelAnimationFrame(hubMotionFrame);
+  disposeHubMotion();
+  disposeHubMotion = () => {};
   if (!configured) {
     app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
     return;
@@ -144,7 +148,9 @@ function render() {
   if (!state.user) { app.innerHTML = renderAuth(); return; }
   if (!state.member) { app.innerHTML = renderPending(); return; }
   app.innerHTML = (state.view === 'hub' ? renderHub() : renderBoard()) + renderPanel();
-  if (state.view === 'hub') requestAnimationFrame(startHubMotion);
+  if (state.view === 'hub') hubMotionFrame = requestAnimationFrame(() => {
+    disposeHubMotion = mountHubMotion(document.querySelector('.hub-orbit'));
+  });
 }
 
 function renderAuth() {
@@ -174,137 +180,18 @@ function stageIcon(symbol) {
 }
 
 function renderHub() {
-  const n = state.stages.length;
-  const cx = 600;
-  const cy = 310;
-  const rx = 470;
-  const ry = 210;
-  const centerEdge = 92;
-  const stageEdge = 42;
-  const points = state.stages.map((item, index) => {
-    const angle = (-150 + index * 360 / Math.max(n, 1)) * Math.PI / 180;
-    const x = cx + rx * Math.cos(angle);
-    const y = cy + ry * Math.sin(angle);
-    const dx = x - cx;
-    const dy = y - cy;
-    const distance = Math.hypot(dx, dy) || 1;
-    const ux = dx / distance;
-    const uy = dy / distance;
-    return {
-      item, index, x, y,
-      startX: cx + ux * centerEdge,
-      startY: cy + uy * centerEdge,
-      endX: x - ux * stageEdge,
-      endY: y - uy * stageEdge,
-    };
-  });
-  const flows = points.map((point, index) => {
-    const next = points[(index + 1) % points.length];
-    const dx = next.x - point.x;
-    const dy = next.y - point.y;
-    const distance = Math.hypot(dx, dy) || 1;
-    const ux = dx / distance;
-    const uy = dy / distance;
-    const trim = 48;
-    const sx = point.x + ux * trim;
-    const sy = point.y + uy * trim;
-    const ex = next.x - ux * trim;
-    const ey = next.y - uy * trim;
-    const mx = (sx + ex) / 2;
-    const my = (sy + ey) / 2;
-    const ox = mx - cx;
-    const oy = my - cy;
-    const od = Math.hypot(ox, oy) || 1;
-    const bend = 62;
-    const qx = mx + ox / od * bend;
-    const qy = my + oy / od * bend;
-    return { index, d: `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}` };
-  });
+  const positions = hubStagePositions(state.stages.length);
 
   return `<main class="hub"><button class="hub-logout" data-action="logout" aria-label="Sair da conta" title="Sair da conta">Sair ↗</button>
-    <div class="hub-orbit" aria-label="Etapas do processo">
+    <div class="hub-orbit ${state.stages.length === 1 ? 'hub-single' : ''}" aria-label="Etapas do processo">
       <div class="hub-flow-bg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <svg class="hub-rays" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">
-        ${flows.map(({ index, d }) => `<path id="hub-flow-path-${index}" class="hub-flow-motion-path" d="${d}"/><g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-water-wake wake-wide" d="M-52 0 C-42 -17 -25 -19 -6 -4 C-25 -9 -39 -7 -52 0 C-39 7 -25 9 -6 4 C-25 19 -42 17 -52 0Z"/><path class="hub-water-wake wake-mid" d="M-38 0 C-30 -12 -18 -13 -4 -3 C-18 -6 -29 -5 -38 0 C-29 5 -18 6 -4 3 C-18 13 -30 12 -38 0Z"/><path class="hub-water-wake wake-near" d="M-24 0 C-19 -8 -11 -8 -2 -2 C-11 -4 -18 -3 -24 0 C-18 3 -11 4 -2 2 C-11 8 -19 8 -24 0Z"/><ellipse class="hub-water-glint" cx="-3" cy="0" rx="5.5" ry="3.3"/><animateMotion data-flow-motion="${index}" dur="4.6s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
+      <svg class="hub-waves" viewBox="0 0 1200 620" preserveAspectRatio="none" aria-hidden="true">
+        <defs>${positions.map((_, index) => `<path id="hub-flow-path-${index}" data-flow-path="${index}" d="M0 0"/>`).join('')}</defs>
+        ${positions.map((_, index) => `<g class="hub-surface-wave" data-flow-wake="${index}"><path class="hub-water-wake wake-wide" d="M-47 0 C-41 -10 -32 -14 -23 -11 C-16 -9 -12 -5 -7 -3 C-19 -7 -32 -5 -38 0 C-32 5 -19 7 -7 3 C-12 5 -16 9 -23 11 C-32 14 -41 10 -47 0Z"/><path class="hub-water-wake wake-mid" d="M-33 0 C-28 -7 -21 -10 -15 -8 C-11 -6 -8 -4 -5 -2 C-14 -5 -22 -3 -26 0 C-22 3 -14 5 -5 2 C-8 4 -11 6 -15 8 C-21 10 -28 7 -33 0Z"/><path class="hub-water-wake wake-near" d="M-19 0 C-15 -5 -11 -7 -7 -5 C-5 -4 -3 -2 -2 -1 C-7 -3 -12 -2 -14 0 C-12 2 -7 3 -2 1 C-3 2 -5 4 -7 5 C-11 7 -15 5 -19 0Z"/><ellipse class="hub-water-glint" cx="-2" cy="0" rx="3.7" ry="2.2"/><animateMotion data-flow-motion="${index}" dur="4.8s" begin="indefinite" fill="freeze" rotate="auto"><mpath href="#hub-flow-path-${index}"/></animateMotion></g>`).join('')}
       </svg>
       <button class="hub-center" data-action="enter" aria-label="Entrar no sistema completo"><span class="hub-monogram">R</span><strong>REPAROS</strong><small>ENTRAR</small></button>
-      ${points.map(({ item, x, y, index }) => `<button class="hub-stage" data-hub-stage="${index}" style="--hub-x:${(x / 12).toFixed(2)}%;--hub-y:${(y / 6.2).toFixed(2)}%;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-label">${e(item.name)}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${count(item.id)} ${count(item.id) === 1 ? 'caso' : 'casos'} · ${e(item.description || 'Etapa do processo')}</small></span></button>`).join('')}
+      ${state.stages.map((item, index) => { const { x, y } = positions[index]; return `<button class="hub-stage ${x < 20 ? 'hub-edge-left' : x > 80 ? 'hub-edge-right' : ''}" data-hub-stage="${index}" style="--hub-x:${x}%;--hub-y:${y}%;--hub-phase:-${index * 580}ms;${style(item)}" data-action="open-stage" data-id="${e(item.id)}" aria-label="Abrir ${e(item.name)}: ${count(item.id)} casos. ${e(item.description)}"><span class="hub-stage-icon">${stageIcon(item.icon)}${count(item.id) ? `<b>${count(item.id)}</b>` : ''}</span><span class="hub-tooltip"><strong>${e(item.name)}</strong><small>${e(item.description || 'Abrir etapa do processo')}</small></span></button>`; }).join('')}
     </div></main>`;
-}
-
-function stopHubMotion() {
-  if (hubMotionTimer) clearTimeout(hubMotionTimer);
-  hubMotionTimer = 0;
-  hubMotionRun += 1;
-}
-
-function startHubMotion() {
-  stopHubMotion();
-  const runId = hubMotionRun;
-  const orbit = document.querySelector('.hub-orbit');
-  if (!orbit || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  const stages = [...orbit.querySelectorAll('[data-hub-stage]')];
-  const wakes = [...orbit.querySelectorAll('[data-flow-wake]')];
-  const motions = [...orbit.querySelectorAll('[data-flow-motion]')];
-  if (!stages.length || wakes.length !== stages.length || motions.length !== stages.length) return;
-
-  const travelMs = 4600;
-  const dwellMs = 1800;
-
-  const setActiveStage = index => {
-    stages.forEach((button, itemIndex) => {
-      button.classList.toggle('auto-hover', itemIndex === index);
-      button.classList.remove('flow-target', 'flow-arrived');
-    });
-  };
-
-  const arrive = (sourceIndex, targetIndex, wake, finish) => {
-    if (finish.done || runId !== hubMotionRun || !document.body.contains(orbit)) return;
-    finish.done = true;
-    if (hubMotionTimer) clearTimeout(hubMotionTimer);
-    hubMotionTimer = 0;
-    wake.classList.remove('running');
-
-    stages.forEach((button, itemIndex) => {
-      button.classList.toggle('auto-hover', itemIndex === targetIndex);
-      button.classList.toggle('flow-target', itemIndex === targetIndex);
-      button.classList.remove('flow-arrived');
-    });
-    const target = stages[targetIndex];
-    void target.offsetWidth;
-    target.classList.add('flow-arrived');
-
-    hubMotionTimer = setTimeout(() => {
-      if (runId !== hubMotionRun || !document.body.contains(orbit)) return;
-      target.classList.remove('flow-arrived', 'flow-target');
-      launch(targetIndex);
-    }, dwellMs);
-  };
-
-  const launch = sourceIndex => {
-    if (runId !== hubMotionRun || !document.body.contains(orbit)) return;
-    const targetIndex = (sourceIndex + 1) % stages.length;
-    const wake = wakes[sourceIndex];
-    const motion = motions[sourceIndex];
-    const finish = { done: false };
-
-    setActiveStage(sourceIndex);
-    wakes.forEach((item, index) => item.classList.toggle('running', index === sourceIndex));
-
-    const onEnd = () => arrive(sourceIndex, targetIndex, wake, finish);
-    motion.addEventListener('endEvent', onEnd, { once: true });
-
-    if (typeof motion.beginElement === 'function') {
-      motion.beginElement();
-    } else {
-      wake.classList.add('css-fallback');
-    }
-
-    hubMotionTimer = setTimeout(onEnd, travelMs + 120);
-  };
-
-  launch(0);
 }
 
 function renderBoard() {
