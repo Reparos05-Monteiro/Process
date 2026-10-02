@@ -38,7 +38,7 @@ test('frontend usa aprovação atômica, trava otimista e debounce', async () =>
   const repository = await read('src/repair-repository.js');
   assert.match(main, /repository\.approveAccess\(id\)/);
   assert.match(main, /\^sb_publishable_/);
-  assert.match(repository, /db\.rpc\('repair_approve_access'/);
+  assert.match(repository, /from\('repair_members'\)[\s\S]*role:\s*'editor'/);
   assert.match(repository, /\.eq\('updated_at', previousUpdatedAt\)/);
   assert.match(main, /setTimeout\(\(\) => \{[\s\S]*render\(\);[\s\S]*\}, 140\)/);
   assert.doesNotMatch(main, /notify\((?:error|err)\.message/);
