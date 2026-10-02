@@ -20,20 +20,20 @@ create table if not exists public.repair_access_requests (
 -- O schema private não deve ser incluído nos schemas expostos pela Data API.
 create schema if not exists private;
 create or replace function private.repair_is_member()
-returns boolean language sql stable security definer set search_path = '' as $
+returns boolean language sql stable security definer set search_path = '' as $$
   select (select auth.uid()) is not null and exists (
     select 1 from public.repair_members
     where user_id = (select auth.uid())
   );
-$;
+$$;
 
 create or replace function private.repair_is_admin()
-returns boolean language sql stable security definer set search_path = '' as $
+returns boolean language sql stable security definer set search_path = '' as $$
   select (select auth.uid()) is not null and exists (
     select 1 from public.repair_members
     where user_id = (select auth.uid()) and role = 'admin'
   );
-$;
+$$;
 revoke all on function private.repair_is_member() from public, anon, authenticated;
 revoke all on function private.repair_is_admin() from public, anon, authenticated;
 grant usage on schema private to authenticated;
@@ -192,7 +192,7 @@ create policy repair_cases_delete_admin on public.repair_cases for delete to aut
 
 -- Aprovação atômica: evita membro criado com pedido pendente ou vice-versa.
 create or replace function public.repair_approve_access(p_user_id uuid)
-returns void language plpgsql security invoker set search_path = '' as $
+returns void language plpgsql security invoker set search_path = '' as $$
 begin
   if not (select private.repair_is_admin()) then
     raise exception 'Somente o administrador pode liberar acessos.' using errcode = '42501';
@@ -205,13 +205,13 @@ begin
   on conflict (user_id) do nothing;
   delete from public.repair_access_requests where user_id = p_user_id;
 end;
-$;
+$$;
 revoke all on function public.repair_approve_access(uuid) from public, anon;
 grant execute on function public.repair_approve_access(uuid) to authenticated;
 
 -- O banco garante o mesmo limite de etapas suportado pela interface.
 create or replace function public.repair_enforce_stage_limit()
-returns trigger language plpgsql security invoker set search_path = '' as $
+returns trigger language plpgsql security invoker set search_path = '' as $$
 begin
   perform pg_advisory_xact_lock(hashtext('repair_stages_limit'));
   if (select count(*) from public.repair_stages) >= 12 then
@@ -219,7 +219,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 revoke all on function public.repair_enforce_stage_limit() from public, anon, authenticated;
 drop trigger if exists repair_stages_limit on public.repair_stages;
 create trigger repair_stages_limit before insert on public.repair_stages
