@@ -61,7 +61,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
     .replace("import { createRepairRepository, requireData } from './repair-repository.js';", '')
     .replace(/import \{[\s\S]*?\} from '.\/model\.js';/, '')
     .replaceAll('import.meta.env.VITE_SUPABASE_URL', "'https://supabase.example'")
-    .replaceAll('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY', "'chave-publica'");
+    .replaceAll('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY', "'sb_publishable_teste'");
   vm.runInNewContext(source, {
     ...model, e: model.escapeHTML, createClient: () => db, createRepairRepository, requireData, document,
     window: { location: { origin: 'https://reparos.example', pathname: '/' } },
