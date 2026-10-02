@@ -60,6 +60,26 @@ function notify(message, isError = false) {
   notice.className = `visible${isError ? ' error' : ''}`;
   noticeTimer = setTimeout(() => { notice.className = ''; }, 5500);
 }
+function friendlyError(error, fallback = 'Não foi possível concluir a operação.') {
+  const message = String(error?.message ?? '');
+  const safeMessages = [
+    'Este caso foi alterado por outra pessoa.',
+    'Não foi possível validar a versão atual do caso.',
+    'O sistema aceita no máximo 12 etapas.',
+    'Solicitação de acesso não encontrada.',
+  ];
+  if (safeMessages.some(prefix => message.startsWith(prefix))) return message;
+  if (/invalid login credentials/i.test(message)) return 'E-mail ou senha inválidos.';
+  if (/email not confirmed/i.test(message)) return 'Confirme seu e-mail antes de entrar.';
+  if (/user already registered/i.test(message)) return 'Já existe uma conta com este e-mail.';
+  if (/permission denied|row-level security|42501/i.test(message)) return 'Você não tem permissão para realizar esta operação.';
+  if (/failed to fetch|network|load failed/i.test(message)) return 'Não foi possível conectar ao servidor. Tente novamente.';
+  return fallback;
+}
+function notifyError(error, fallback) {
+  console.error(error);
+  notify(friendlyError(error, fallback), true);
+}
 async function loadPublic() {
   const { stages, settings } = await repository.getPublic();
   state.stages = orderedStages(stages);
@@ -98,7 +118,8 @@ async function initialize() {
     if (state.member) await loadPublic();
     state.error = '';
   } catch (error) {
-    state.error = `Não foi possível carregar o sistema: ${error.message}`;
+    console.error(error);
+    state.error = friendlyError(error, 'Não foi possível carregar o sistema. Tente novamente.');
   } finally {
     state.loading = false;
     render();
@@ -114,7 +135,7 @@ async function initialize() {
     if (event === 'SIGNED_IN' && !state.user && !loginInProgress) {
       setTimeout(async () => {
         try { await hydrateAuth(); if (state.member) await loadPublic(); render(); }
-        catch (err) { notify(err.message, true); }
+        catch (err) { notifyError(err); }
       }, 0);
     }
   }).data.subscription;
@@ -279,7 +300,7 @@ async function write(form, task, success) {
   if (submit?.disabled) return;
   if (submit) submit.disabled = true;
   try { await task(); await success(); }
-  catch (error) { notify(error.message || 'Não foi possível salvar.', true); if (submit) submit.disabled = false; }
+  catch (error) { notifyError(error, 'Não foi possível salvar.'); if (submit) submit.disabled = false; }
 }
 async function refresh() { await loadPublic(); if (state.member) await Promise.all([loadCases(), loadRequests()]); render(); }
 function caseValues(form, includeNote = false) {
@@ -308,19 +329,19 @@ document.addEventListener('click', async event => {
   if (action === 'check-access') {
     button.disabled = true;
     try { await hydrateAuth(); if (state.member) await loadPublic(); render(); if (!state.member) notify('Seu acesso ainda está pendente.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'approve-request' && admin()) {
     button.disabled = true;
     try {
       await repository.approveAccess(id);
       await loadRequests(); render(); notify('Acesso de editor liberado.');
-    } catch (error) { button.disabled = false; notify(error.message, true); }
+    } catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'refresh') {
     button.disabled = true;
     try { await refresh(); notify('Dados atualizados.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'enter') gateTo('board');
   if (action === 'open-stage') gateTo('stage', id);
@@ -332,26 +353,26 @@ document.addEventListener('click', async event => {
   if (action === 'settings' && admin()) openPanel('settings');
   if (action === 'add-stage' && admin()) { state.stageId = null; openPanel('stage-form'); }
   if (action === 'edit-stage' && admin()) { state.stageId = id; openPanel('stage-form'); }
-  if (action === 'logout') { const { error } = await db.auth.signOut(); if (error) notify(error.message, true); }
+  if (action === 'logout') { const { error } = await db.auth.signOut(); if (error) notifyError(error, 'Não foi possível sair da conta.'); }
   if ((action === 'move-up' || action === 'move-down') && admin()) {
     button.disabled = true;
     try {
       await repository.reorderStages(reorderIds(state.stages, id, action === 'move-up' ? -1 : 1));
       await refresh(); notify('Ordem das etapas atualizada.');
-    } catch (error) { button.disabled = false; notify(error.message, true); }
+    } catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'delete-stage' && admin()) {
     if (count(id)) { notify('Mova os casos desta etapa antes de excluí-la.', true); return; }
     if (state.stages.length <= 1 || !window.confirm('Excluir esta etapa?')) return;
     button.disabled = true;
     try { await repository.deleteStage(id); state.panel = 'settings'; await refresh(); notify('Etapa excluída.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
   if (action === 'delete-case' && admin()) {
     if (!window.confirm(`Excluir o caso ${caseCode(id)} permanentemente?`)) return;
     button.disabled = true;
     try { await repository.deleteCase(id); state.panel = 'all'; await refresh(); notify('Caso excluído.'); }
-    catch (error) { button.disabled = false; notify(error.message, true); }
+    catch (error) { button.disabled = false; notifyError(error); }
   }
 });
 
@@ -478,14 +499,14 @@ document.addEventListener('submit', async event => {
     }, async () => render());
   }
   if (form.id === 'case-create') {
-    let payload; try { payload = caseValues(form); } catch (error) { notify(error.message, true); return; }
+    let payload; try { payload = caseValues(form); } catch { notify('Revise os campos do caso.', true); return; }
     await write(form, async () => {
       const created = await repository.createCase(payload);
       state.caseId = created.id; state.stageId = created.stage_id;
     }, async () => { state.panel = 'detail'; await refresh(); notify('Caso criado.'); });
   }
   if (form.id === 'case-update') {
-    let payload; try { payload = caseValues(form, true); } catch (error) { notify(error.message, true); return; }
+    let payload; try { payload = caseValues(form, true); } catch { notify('Revise os campos do caso.', true); return; }
     const original = state.cases.find(item => String(item.id) === String(state.caseId));
     await write(form, async () => {
       if (!original?.updated_at) throw new Error('Não foi possível validar a versão atual do caso.');
