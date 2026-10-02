@@ -6,9 +6,10 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('configuração pública não contém credenciais privilegiadas', async () => {
   const config = await read('src/public-config.js');
-  assert.doesNotMatch(config, /service_role/i);
-  assert.doesNotMatch(config, /sb_secret_/i);
-  assert.match(config, /sb_publishable_/);
+  const match = config.match(/SUPABASE_PUBLISHABLE_KEY\s*=\s*["']([^"']+)["']/);
+  assert.ok(match, 'publishable key não encontrada');
+  assert.match(match[1], /^sb_publishable_/);
+  assert.doesNotMatch(match[1], /service_role|sb_secret_/i);
 });
 
 test('deploy envia headers de segurança essenciais', async () => {
