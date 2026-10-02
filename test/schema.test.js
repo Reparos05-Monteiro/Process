@@ -63,7 +63,9 @@ test('esquema aplica RLS para visitante, editor e administrador', async () => {
     assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 1);
     await db.query("insert into public.repair_members(user_id,role) values ($1,'editor')", [pending]);
     assert.equal((await db.query('select count(*)::integer as n from public.repair_access_requests')).rows[0].n, 0);
+    await db.exec('reset role');
     assert.equal((await db.query("select count(*)::integer as n from public.repair_members where user_id=$1 and role='editor'", [pending])).rows[0].n, 1);
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${admin}', false);`);
     assert.equal((await db.query("update public.repair_settings set title='Central Nova' where id=1 returning id")).rows.length, 1);
     const ids = (await db.query('select id from public.repair_stages order by sort_order')).rows.map(r => r.id);
     const reversed = [...ids].reverse();
