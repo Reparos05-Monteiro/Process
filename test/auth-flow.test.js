@@ -47,7 +47,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
       if (selector === '#notice') return notice;
       return { focus() {} };
     },
-    addEventListener(type, handler) { listeners[type] = handler; },
+    addEventListener(type, handler) { (listeners[type] ??= []).push(handler); },
   };
   class FakeFormData {
     constructor(form) { this.fields = form.fields; }
@@ -56,6 +56,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
   const source = (await readFile(new URL('../src/main.js', import.meta.url), 'utf8'))
     .replace("import { createClient } from '@supabase/supabase-js';", '')
     .replace(/^import '.\/.*\.css';$/gm, '')
+    .replace("import { mountHubMotion } from './hub-motion.js';", '')
     .replace(/import \{[\s\S]*?\} from '.\/model\.js';/, '')
     .replaceAll('import.meta.env.VITE_SUPABASE_URL', "'https://supabase.example'")
     .replaceAll('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY', "'chave-publica'");
@@ -63,6 +64,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
     ...model, e: model.escapeHTML, createClient: () => db, document,
     window: { location: { origin: 'https://reparos.example', pathname: '/' } },
     FormData: FakeFormData, URL, Date, Intl, setTimeout, clearTimeout,
+    cancelAnimationFrame() {}, requestAnimationFrame() {},
   });
   await tick();
   assert.match(app.innerHTML, /id="login-form"/);
@@ -72,7 +74,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
 
   const click = async action => {
     const button = { dataset: { action }, disabled: false, closest: () => button };
-    await listeners.click({ target: button });
+    for (const handler of listeners.click) await handler({ target: button });
   };
   await click('auth-signup');
   assert.match(app.innerHTML, /id="signup-form"/);
@@ -81,12 +83,12 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
     id: 'signup-form', fields: { email: 'dono@example.com', password: 'senha-super-segura', confirm_password: 'senha-super-segura' },
     querySelector: () => ({ disabled: false }),
   };
-  await listeners.submit({ target: form, preventDefault() {} });
+  for (const handler of listeners.submit) await handler({ target: form, preventDefault() {} });
   assert.equal(notice.textContent, '');
   assert.match(app.innerHTML, /Confira seu e-mail/);
   await click('auth-login');
   form.id = 'login-form';
-  await listeners.submit({ target: form, preventDefault() {} });
+  for (const handler of listeners.submit) await handler({ target: form, preventDefault() {} });
   assert.match(app.innerHTML, /Aguardando liberação/);
   assert.doesNotMatch(app.innerHTML, /class="hub-orbit"/);
   assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{ user_id: user.id, email: user.email }]);
