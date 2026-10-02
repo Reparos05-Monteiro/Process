@@ -21,7 +21,10 @@ function validEndpoint(value) {
       (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && parsed.hostname === 'localhost'));
   } catch { return false; }
 }
-const configured = validEndpoint(url) && !!key && !key.includes('SUA_CHAVE');
+function validPublishableKey(value) {
+  return /^sb_publishable_[A-Za-z0-9_-]+$/.test(String(value ?? ''));
+}
+const configured = validEndpoint(url) && validPublishableKey(key);
 const db = configured ? createClient(url, key) : null;
 const repository = db ? createRepairRepository(db) : null;
 const state = {
@@ -122,7 +125,7 @@ function render() {
   disposeHubMotion();
   disposeHubMotion = () => {};
   if (!configured) {
-    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> na Vercel. Consulte o README do projeto.</p></div></main>`;
+    app.innerHTML = `<main class="centered"><div class="empty-card"><div class="brand">R</div><h1>Configuração pendente</h1><p>Defina <code>VITE_SUPABASE_URL</code> e uma <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> válida na Vercel. Chaves secretas são rejeitadas no navegador. Consulte o README do projeto.</p></div></main>`;
     return;
   }
   if (state.loading) { app.innerHTML = '<main class="centered"><p>Carregando o mapa de reparos…</p></main>'; return; }
