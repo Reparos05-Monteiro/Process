@@ -60,7 +60,7 @@ test('primeira tela pede autenticação; cadastro e login avançam para liberaç
     .replace("import { mountHubMotion } from './hub-motion.js';", '')
     .replace("import { createRepairRepository, requireData } from './repair-repository.js';", '')
     .replace(/import \{[\s\S]*?\} from '.\/model\.js';/, '')
-    .replaceAll('import.meta.env.VITE_SUPABASE_URL', "'https://supabase.example'")
+    .replaceAll('import.meta.env.VITE_SUPABASE_URL', "'https://teste.supabase.co'")
     .replaceAll('import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY', "'sb_publishable_teste'");
   vm.runInNewContext(source, {
     ...model, e: model.escapeHTML, createClient: () => db, createRepairRepository, requireData, document,
