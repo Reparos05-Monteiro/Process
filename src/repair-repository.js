@@ -53,7 +53,8 @@ export function createRepairRepository(db) {
     },
 
     async approveAccess(userId) {
-      return requireData(await db.rpc('repair_approve_access', { p_user_id: userId }));
+      return requireData(await db.from('repair_members')
+        .insert({ user_id: userId, role: 'editor' }));
     },
 
     async reorderStages(ids) {
