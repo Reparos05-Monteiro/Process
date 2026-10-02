@@ -190,24 +190,19 @@ drop policy if exists repair_cases_delete_admin on public.repair_cases;
 create policy repair_cases_delete_admin on public.repair_cases for delete to authenticated
   using ((select private.repair_is_admin()));
 
--- Aprovação atômica: evita membro criado com pedido pendente ou vice-versa.
-create or replace function public.repair_approve_access(p_user_id uuid)
-returns void language plpgsql security definer set search_path = '' as $
+-- Aprovação atômica: inserir o editor remove o pedido pendente na mesma transação.
+create or replace function private.repair_clear_access_request()
+returns trigger language plpgsql security invoker set search_path = '' as $$
 begin
-  if not (select private.repair_is_admin()) then
-    raise exception 'Somente o administrador pode liberar acessos.' using errcode = '42501';
-  end if;
-  if not exists (select 1 from public.repair_access_requests where user_id = p_user_id) then
-    raise exception 'Solicitação de acesso não encontrada.';
-  end if;
-  insert into public.repair_members (user_id, role)
-  values (p_user_id, 'editor')
-  on conflict (user_id) do nothing;
-  delete from public.repair_access_requests where user_id = p_user_id;
+  delete from public.repair_access_requests where user_id = new.user_id;
+  return new;
 end;
 $$;
-revoke all on function public.repair_approve_access(uuid) from public, anon;
-grant execute on function public.repair_approve_access(uuid) to authenticated;
+revoke all on function private.repair_clear_access_request() from public, anon, authenticated;
+drop trigger if exists repair_members_clear_request on public.repair_members;
+create trigger repair_members_clear_request after insert on public.repair_members
+  for each row when (new.role = 'editor')
+  execute function private.repair_clear_access_request();
 
 -- O banco garante o mesmo limite de etapas suportado pela interface.
 create or replace function public.repair_enforce_stage_limit()
